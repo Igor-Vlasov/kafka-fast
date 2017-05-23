@@ -35,8 +35,8 @@
 (defn- work-calculate-delegate!
   "Checks the reentrant-lock $group-name/\"kafka-nodes-master-lock\" and if it returns true
    the (calculate-new-work node topics) function is called"
-  [{:keys [redis-conn group-name] :as node} topics]
-  {:pre [redis-conn topics group-name]}
+  [{:keys [shutdown-flag redis-conn group-name] :as node} topics]
+  {:pre [shutdown-flag redis-conn topics group-name]}
   ;timeout-ms wait-ms
   (let [lock-timeout (* 10 60000)]
     (try
@@ -45,7 +45,8 @@
         (str group-name "/kafka-nodes-master-lock")
         lock-timeout
         1000
-        (calculate-new-work node topics))
+        (when (not (.get shutdown-flag))
+          (calculate-new-work node topics)))
       (catch Exception e (error e e)))))
 
 (defn- start-work-calculate
@@ -60,8 +61,8 @@
 
   (fixdelay-thread
     freq
-    (when (not (.get shutdown-flag)))
-      (safe-call work-calculate-delegate! org @topics)))
+    (when (not (.get shutdown-flag))
+      (safe-call work-calculate-delegate! shutdown-flag org @topics))))
 
 (defn copy-redis-queue
   "This function copies data from one list/queue to another
