@@ -1,4 +1,4 @@
-(defproject kafka-clj "4.0.3"
+(defproject kafka-clj "4.0.4.r1-SNAPSHOT"
   :description "fast kafka library implemented in clojure"
   :url "https://github.com/gerritjvv/kafka-fast"
   :license {:name "Eclipse Public License"
@@ -13,6 +13,8 @@
          :url "https://github.com/gerritjvv/kafka-fast.git"}
 
   :java-source-paths ["java"]
+
+  :clean-non-project-classes true
 
   :profiles {:test {:jvm-opts ["-Xmx1g" "-server"
 
@@ -51,7 +53,7 @@
   :test-paths ["test" "test-java"]
 
   :dependencies [
-                 [tcp-driver "0.1.2-SNAPSHOT"]
+                 [tcp-driver "0.1.3-SNAPSHOT"]
 
                  [com.taoensso/carmine "2.15.0" :exclusions [org.clojure/clojure]]
                  [org.redisson/redisson "3.2.2" :exclusions [io.netty/netty-buffer]]
@@ -61,7 +63,7 @@
                  [criterium "0.4.4" :scope "test"]
 
                  [prismatic/schema "1.1.3"]
-                 [org.mapdb/mapdb "1.0.9"]
+                 [org.mapdb/mapdb "3.0.4"]
                  [org.xerial.snappy/snappy-java "1.1.2.4"]
 
                  [net.jpountz.lz4/lz4 "1.3.0"]

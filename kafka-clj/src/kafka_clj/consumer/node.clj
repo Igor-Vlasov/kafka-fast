@@ -1,6 +1,7 @@
 (ns kafka-clj.consumer.node
   (:import [java.net InetAddress]
-           (org.openjdk.jol.info GraphLayout))
+           (org.openjdk.jol.info GraphLayout)
+           (java.util.concurrent.atomic AtomicBoolean))
   (:require
     [kafka-clj.consumer.work-organiser :refer [create-organiser! close-organiser! calculate-new-work]]
     [kafka-clj.consumer.consumer :refer [consume! close-consumer! consumer-pool-stats]]
@@ -22,9 +23,9 @@
 
 (defn shutdown-node!
   "Closes the consumer node"
-  [{:keys [org consumer msg-ch calc-work-thread redis-conn] :as node}]
-  {:pre [org consumer msg-ch calc-work-thread redis-conn]}
-
+  [{:keys [org consumer msg-ch calc-work-thread redis-conn shutdown-flag] :as node}]
+  {:pre [org consumer msg-ch calc-work-thread redis-conn shutdown-flag]}
+  (.set shutdown-flag true)
   (stop-fixdelay calc-work-thread)
   (safe-call close-consumer! consumer)
   (safe-call close-organiser! org :close-redis false)
@@ -54,12 +55,13 @@
    Note this means that all nodes need to have the same reference to the same topics over all the consumer machines.
    One way of doing this is treating all consumers as masters but only one of them will make the actual work assignment.
    The topics can be polled from a configuration service like zookeeper or even a DB"
-  [org topics & {:keys [freq] :or {freq 10000}}]
+  [shutdown-flag org topics & {:keys [freq] :or {freq 10000}}]
   {:pre [org topics]}
 
   (fixdelay-thread
     freq
-    (safe-call work-calculate-delegate! org @topics)))
+    (when (not (.get shutdown-flag)))
+      (safe-call work-calculate-delegate! org @topics)))
 
 (defn copy-redis-queue
   "This function copies data from one list/queue to another
@@ -121,7 +123,8 @@
                                                             work-unit-event-ch-buff-size 100}}]
   {:pre [conf topics (not-empty (:bootstrap-brokers conf)) (:redis-conf conf) (number? msg-ch-buff-size) (number? work-unit-event-ch-buff-size)]}
 
-  (let [host-name (.getHostName (InetAddress/getLocalHost))
+  (let [shutdown-flag (AtomicBoolean. false)
+        host-name (.getHostName (InetAddress/getLocalHost))
         topics-ref (ref (into #{} topics))
         group-name (get-in conf [:redis-conf :group-name] "default")
         working-queue-name (str group-name "-kafka-working-queue/" host-name)
@@ -147,7 +150,7 @@
                              :redis-conn redis-conn
                              :msg-ch msg-ch
                              :work-unit-event-ch work-unit-event-ch))
-        calc-work-thread (start-work-calculate (assoc org :redis-conn redis-conn
+        calc-work-thread (start-work-calculate shutdown-flag (assoc org :redis-conn redis-conn
                                                           :stats-atom stats-atom) topics-ref :freq (get conf :work-calculate-freq 10000))
         ]
 
@@ -155,6 +158,7 @@
     (copy-redis-queue redis-conn working-queue-name work-queue-name)
 
     {:conf               intermediate-conf
+     :shutdown-flag shutdown-flag
      :topics-ref topics-ref
      :org org :msg-ch msg-ch
      :consumer consumer

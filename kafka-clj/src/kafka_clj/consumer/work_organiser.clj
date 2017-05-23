@@ -291,8 +291,9 @@
 
         (doseq [{:keys [partition all-offsets]} offset-data]
           (let [k {:topic topic :partition partition}
-                max-kafka-offset (apply (fnil max 0) all-offsets)
-                min-kafka-offset (apply (fnil min 0) all-offsets)]
+                empty-offsets (empty? all-offsets)
+                max-kafka-offset (if empty-offsets 0 (apply (fnil max 0) all-offsets))
+                min-kafka-offset (if empty-offsets 0 (apply (fnil min 0) all-offsets))]
 
             (.put m k (_max-offset (.get m k) [(saved-offset-f state
                                                                [min-kafka-offset max-kafka-offset]
