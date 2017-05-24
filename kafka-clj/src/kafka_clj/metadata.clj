@@ -19,7 +19,8 @@
     [schema.core :as s])
   (:import
     (io.netty.buffer Unpooled ByteBuf)
-    (kafka_clj.util Util)))
+    (kafka_clj.util Util)
+    (java.util.concurrent.atomic AtomicBoolean)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
@@ -229,11 +230,13 @@
   (let [driver (tcp/driver bootstrap-brokers :retry-limit (get conf :retry-limit 3) :pool-conf conf)
         brokers (into #{} bootstrap-brokers)]
 
-    {:conf conf
-     :driver driver
+    {:conf         conf
+     :driver       driver
      :metadata-ref (ref nil)
-     :brokers-ref (ref brokers)}))
+     :brokers-ref  (ref brokers)
+     :closed       (AtomicBoolean. false)}))
 
-(defn close [{:keys [driver]}]
-  {:pre [driver]}
+(defn close [{:keys [driver closed]}]
+  {:pre [driver closed]}
+  (.set closed true)
   (tcp-driver/close driver))

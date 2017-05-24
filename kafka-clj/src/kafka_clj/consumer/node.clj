@@ -42,8 +42,8 @@
 (defn- work-calculate-delegate!
   "Checks the reentrant-lock $group-name/\"kafka-nodes-master-lock\" and if it returns true
    the (calculate-new-work node topics) function is called"
-  [shutdown-flag {:keys [redis-conn group-name] :as node} topics]
-  {:pre [shutdown-flag redis-conn topics group-name]}
+  [{:keys [redis-conn group-name] :as node} topics]
+  {:pre [redis-conn topics group-name]}
   ;timeout-ms wait-ms
   (let [lock-timeout (* 10 60000)]
     (try
@@ -52,10 +52,7 @@
         (str group-name "/kafka-nodes-master-lock")
         lock-timeout
         1000
-        (when (not (.get shutdown-flag))
-          (do
-            (info "Trying to calculate new work...")
-            (calculate-new-work node topics))))
+        (calculate-new-work node topics))
       (catch Exception e (error e e)))))
 
 (defn- start-work-calculate
@@ -65,13 +62,12 @@
    Note this means that all nodes need to have the same reference to the same topics over all the consumer machines.
    One way of doing this is treating all consumers as masters but only one of them will make the actual work assignment.
    The topics can be polled from a configuration service like zookeeper or even a DB"
-  [shutdown-flag org topics & {:keys [freq] :or {freq 10000}}]
+  [org topics & {:keys [freq] :or {freq 10000}}]
   {:pre [org topics]}
 
   (fixdelay-thread
     freq
-    (when (not (.get shutdown-flag))
-      (safe-call work-calculate-delegate! shutdown-flag org @topics))))
+    (safe-call work-calculate-delegate! org @topics)))
 
 (defn copy-redis-queue
   "This function copies data from one list/queue to another
@@ -160,7 +156,7 @@
                              :redis-conn redis-conn
                              :msg-ch msg-ch
                              :work-unit-event-ch work-unit-event-ch))
-        calc-work-thread (start-work-calculate shutdown-flag (assoc org :redis-conn redis-conn
+        calc-work-thread (start-work-calculate (assoc org :redis-conn redis-conn
                                                           :stats-atom stats-atom) topics-ref :freq (get conf :work-calculate-freq 10000))
         ]
 

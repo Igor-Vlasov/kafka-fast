@@ -60,12 +60,14 @@
                                                    ;;  {:host "localhost", :port 51718, :isr [{:host "localhost", :port 51718}], :id 0, :error-code 0} {:partition 0}
                                                    ;; ]
                                                    ;; ]
+                                                   (if (.get (:closed metadata-connector))
+                                                   m
                                                    (assoc m
                                                      broker
                                                      (get-offsets metadata-connector
                                                                   broker
                                                                   topic ;;produce [{:partition N} ...]
-                                                                  (map second broker-partition-pairs))))
+                                                                  (map second broker-partition-pairs)))))
                                                  {}
                                                  broker-partition-pairs)]
                       offset-maps))]
