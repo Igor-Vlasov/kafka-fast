@@ -35,7 +35,7 @@
 (defn- work-calculate-delegate!
   "Checks the reentrant-lock $group-name/\"kafka-nodes-master-lock\" and if it returns true
    the (calculate-new-work node topics) function is called"
-  [{:keys [shutdown-flag redis-conn group-name] :as node} topics]
+  [shutdown-flag {:keys [redis-conn group-name] :as node} topics]
   {:pre [shutdown-flag redis-conn topics group-name]}
   ;timeout-ms wait-ms
   (let [lock-timeout (* 10 60000)]
