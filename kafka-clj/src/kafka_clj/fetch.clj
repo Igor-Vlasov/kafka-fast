@@ -186,7 +186,7 @@
   (let [timeout (get (:conf metadata-connector) :fetch-tcp-timeout 10000)
         ^ByteBuf buff (Unpooled/buffer)
         _ (do (with-size buff write-offset-request (merge (:conf metadata-connector) {:topics topics})))
-
+        _ (info "About to use metadata connector pool to get offsets...")
         resp-bts (tcp-driver/send-f (:driver metadata-connector)
                                     host-address
                                     (fn [conn]

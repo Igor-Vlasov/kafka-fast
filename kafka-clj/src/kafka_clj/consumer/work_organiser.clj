@@ -225,7 +225,8 @@
         ;note that this function will also write to redis
         (filter (fn [x] (and x (:saved-offset x) (:offset x) (< ^Long (:saved-offset x) ^Long (:offset x))))
                 (map #(do
-                        (add-offsets! state topic [(apply (fnil min 0) (:all-offsets %)) (:offset %)] %)) offset-data))
+                       (let [all-offsets (:all-offsets %)]
+                        (add-offsets! state topic [(if (empty? all-offsets) 0 (apply (fnil min 0) all-offsets)) (:offset %)] %))) offset-data))
 
         consume-step2 (if consume-step consume-step (get conf :consume-step 100000))]
 

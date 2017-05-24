@@ -25,11 +25,18 @@
   "Closes the consumer node"
   [{:keys [org consumer msg-ch calc-work-thread redis-conn shutdown-flag] :as node}]
   {:pre [org consumer msg-ch calc-work-thread redis-conn shutdown-flag]}
+  (info "Starting node component shutdown...")
   (.set shutdown-flag true)
+  (info "Showdown flag is set")
+  (info "Sending calc-work-thread stop request...")
   (stop-fixdelay calc-work-thread)
+  (info "Closing comsumer...")
   (safe-call close-consumer! consumer)
+  (info "Closing organizer...")
   (safe-call close-organiser! org :close-redis false)
+  (info "Closing redis pool...")
   (safe-call redis/close! redis-conn)
+  (info "Closing messages channel...")
   (safe-call close! msg-ch))
 
 (defn- work-calculate-delegate!
@@ -46,7 +53,9 @@
         lock-timeout
         1000
         (when (not (.get shutdown-flag))
-          (calculate-new-work node topics)))
+          (do
+            (info "Trying to calculate new work...")
+            (calculate-new-work node topics))))
       (catch Exception e (error e e)))))
 
 (defn- start-work-calculate
