@@ -107,11 +107,11 @@
         resp-buff (ByteBuffer/wrap
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
-        metadata (NetworkClient/parseResponse ^ByteBuffer resp-buff
+        metadata (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
                       (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
                                       (short protocol/API_VERSION)
                                       (get conf :client-id "1")
-                                      (get conf :correlation-id 1)))
+                                      (get conf :correlation-id 1))))
 
         accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
                        (if-let [error-obj (.error topicMeta)]
