@@ -131,7 +131,8 @@
                                  leader (.leader partitionMeta)]
                              (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
 
-        converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition)]
+        converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition)
+        _ (info "Meta after filtering and conversion: " converted-filtered-meta)]
 
     converted-filtered-meta))
 
