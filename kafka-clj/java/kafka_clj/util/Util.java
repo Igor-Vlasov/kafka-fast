@@ -1,10 +1,15 @@
 package kafka_clj.util;
 
+import clojure.lang.IFn;
+import clojure.lang.Keyword;
 import com.alexkasko.unsafe.offheap.OffHeapMemory;
 import io.netty.buffer.ByteBuf;
 import net.jpountz.lz4.LZ4BlockInputStream;
 import net.jpountz.lz4.LZ4BlockOutputStream;
 import org.apache.commons.io.IOUtils;
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.protocol.Errors;
+import org.apache.kafka.common.requests.MetadataResponse;
 import org.xerial.snappy.Snappy;
 import org.xerial.snappy.SnappyInputStream;
 
@@ -14,6 +19,9 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPInputStream;
 
@@ -223,4 +231,37 @@ public class Util {
            throw rte;
        }
     }
+
+    public static Map<String, Map<Integer, Map<Keyword, Object>>> getLeadersByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartitionLeader)
+    {
+        Map<String, Map<Integer, Map<Keyword, Object>>> result = new HashMap<>();
+
+        for(MetadataResponse.TopicMetadata topicMeta : metadata.topicMetadata())
+        {
+            if(Boolean.TRUE.equals(acceptTopic.invoke(topicMeta)))
+            {
+                Map<Integer, Map<Keyword, Object>> partitionLeaders = new HashMap<>();
+                for(MetadataResponse.PartitionMetadata partitionMeta : topicMeta.partitionMetadata())
+                {
+                    if(Boolean.TRUE.equals(acceptPartitionLeader.invoke(topicMeta, partitionMeta)))
+                    {
+                        Map<Keyword, Object> leaderHostInfo = new HashMap<>();
+                        Node leader = partitionMeta.leader();
+                        leaderHostInfo.put(Keyword.intern("host"), leader.host());
+                        leaderHostInfo.put(Keyword.intern("port"), leader.port());
+                        partitionLeaders.put(partitionMeta.partition(), leaderHostInfo);
+                    }
+                }
+                result.put(topicMeta.topic(), partitionLeaders);
+            }
+        }
+
+        return result;
+    }
+
+    public static String errorToString(Errors error)
+    {
+        return "Code: " + error.code() + " [" + error.name() + "]: " + error.message();
+    }
+
 }

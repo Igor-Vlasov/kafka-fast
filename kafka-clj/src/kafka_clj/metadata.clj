@@ -20,7 +20,9 @@
   (:import
     (io.netty.buffer Unpooled ByteBuf)
     (kafka_clj.util Util)
-    (java.util.concurrent.atomic AtomicBoolean)))
+    (java.util.concurrent.atomic AtomicBoolean)
+    (java.nio ByteBuffer)
+    (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
@@ -101,28 +103,28 @@
 
         resp-len (driver-io/read-int conn timeout)
 
-        resp-buff (Unpooled/wrappedBuffer
+        resp-buff (ByteBuffer/wrap
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
-        resp (kafka-resp/read-metadata-response ^ByteBuf resp-buff)
+        metadata (MetadataResponse/parse ^ByteBuffer resp-buff)
 
-        converted-resp (convert-metadata-response
-                         resp)
+        accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
+                       (if-let [error-obj (.error topicMeta)]
+                         (error "Encountered topic error during metadata refresh, topic: "
+                                (.topic topicMeta) ", error: " (Util/errorToString error-obj) ", topic metadata discarded"))
+                         (and (not (.isInternal topicMeta))))
 
-        check-host-meta (fn [topic {:keys [host error-code] :as host-meta}]
-                          (if (and host
-                                   (number? error-code)
-                                   (zero? error-code))
-                            host-meta
-                            (let [error-msg  (str "Excluding broken host metadata for " topic " => " host-meta)]
-                              (error error-msg)
-                              nil)))]
+        accept-partition (fn [^MetadataResponse$TopicMetadata topicMeta ^MetadataResponse$PartitionMetadata partitionMeta]
+                           (let [error-obj (.error partitionMeta)
+                                 _ (when error-obj (warn "Encountered partition error during metadata refresh, topic: "
+                                                         (.topic topicMeta) ", partition: " (.partition partitionMeta)
+                                                         ", error: " (Util/errorToString error-obj)))
+                                 leader (.leader partitionMeta)]
+                             (not (nil? leader))))
 
-        ;;The aim is to exclude any nil host entries or erorr_code > 0, an error message is printed on exclude
-        (reduce-kv (fn [state log hosts-meta]
-                     (assoc state log (filterv (partial check-host-meta log) hosts-meta)))
-                   {}
-                   converted-resp)))
+        converted-filtered-meta (Util/getLeadersByTopicPartition metadata accept-topic accept-partition)]
+
+    converted-filtered-meta))
 
   (defn safe-nth [coll i]
     (let [v (vec coll)]
