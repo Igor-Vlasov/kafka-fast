@@ -230,15 +230,15 @@ public class Util {
        }
     }
 
-    public static Map<String, Map<Integer, Map<Keyword, Object>>> getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition)
+    public static Map<String, List<Map<Keyword, Object>>> getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition)
     {
-        Map<String, Map<Integer, Map<Keyword, Object>>> result = new HashMap<>();
+        Map<String, List<Map<Keyword, Object>>> result = new HashMap<>();
 
         for(MetadataResponse.TopicMetadata topicMeta : metadata.topicMetadata())
         {
             if(Boolean.TRUE.equals(acceptTopic.invoke(topicMeta)))
             {
-                Map<Integer, Map<Keyword, Object>> partitionMetas = new HashMap<>();
+                List<Map<Keyword, Object>> partitionMetas = new ArrayList<>();
                 for(MetadataResponse.PartitionMetadata partitionMeta : topicMeta.partitionMetadata())
                 {
                     if(Boolean.TRUE.equals(acceptPartition.invoke(topicMeta, partitionMeta)))
@@ -260,7 +260,7 @@ public class Util {
                         metaInfo.put(Keyword.intern("id"), partitionMeta.partition());
                         metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
 
-                        partitionMetas.put(partitionMeta.partition(), metaInfo);
+                        partitionMetas.add(metaInfo);
                     }
                 }
                 result.put(topicMeta.topic(), partitionMetas);
