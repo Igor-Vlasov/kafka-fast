@@ -22,7 +22,8 @@
     (kafka_clj.util Util)
     (java.util.concurrent.atomic AtomicBoolean)
     (java.nio ByteBuffer)
-    (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata)))
+    (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata RequestHeader)
+    (org.apache.kafka.clients NetworkClient)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
@@ -106,7 +107,11 @@
         resp-buff (ByteBuffer/wrap
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
-        metadata (MetadataResponse/parse ^ByteBuffer resp-buff)
+        metadata (NetworkClient/parseResponse ^ByteBuffer resp-buff
+                      (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
+                                      (short protocol/API_VERSION)
+                                      (get conf :client-id "1")
+                                      (get conf :correlation-id 1)))
 
         accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
                        (if-let [error-obj (.error topicMeta)]

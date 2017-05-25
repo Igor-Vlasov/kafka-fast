@@ -84,6 +84,8 @@
 
                  [org.openjdk.jol/jol-core "0.5"]
 
+                 [org.apache.kafka/kafka-clients "0.10.1.0"]
+
                  [org.clojure/clojure "1.8.0" :scope "provided"]
 
                  [org.clojure/test.check "0.9.0" :scope "test"]
