@@ -23,7 +23,8 @@
     (java.util.concurrent.atomic AtomicBoolean)
     (java.nio ByteBuffer)
     (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata RequestHeader)
-    (org.apache.kafka.clients NetworkClient)))
+    (org.apache.kafka.clients NetworkClient)
+    (org.apache.kafka.common.protocol Errors)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
@@ -114,14 +115,17 @@
                                       (get conf :correlation-id 1))))
 
         accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
-                       (if-let [error-obj (.error topicMeta)]
-                         (error "Encountered topic error during metadata refresh, topic: "
-                                (.topic topicMeta) ", error: " (Util/errorToString error-obj) ", topic metadata discarded"))
-                         (and (not (.isInternal topicMeta))))
+                       (let [^Errors error-obj (.error topicMeta)
+                             error-code (.code error-obj)]
+                         (if (zero? error-code)
+                           (not (.isInternal topicMeta))
+                           (error "Encountered topic error during metadata refresh, topic: "
+                                  (.topic topicMeta) ", error: " (Util/errorToString error-obj) ", topic metadata discarded"))))
 
         accept-partition (fn [^MetadataResponse$TopicMetadata topicMeta ^MetadataResponse$PartitionMetadata partitionMeta]
-                           (let [error-obj (.error partitionMeta)
-                                 _ (when error-obj (warn "Encountered partition error during metadata refresh, topic: "
+                           (let [^Errors error-obj (.error partitionMeta)
+                                 error-code (.code error-obj)
+                                 _ (when (not (zero? error-code)) (warn "Encountered partition error during metadata refresh, topic: "
                                                          (.topic topicMeta) ", partition: " (.partition partitionMeta)
                                                          ", error: " (Util/errorToString error-obj)))
                                  leader (.leader partitionMeta)]
