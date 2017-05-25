@@ -125,9 +125,9 @@
                                                          (.topic topicMeta) ", partition: " (.partition partitionMeta)
                                                          ", error: " (Util/errorToString error-obj)))
                                  leader (.leader partitionMeta)]
-                             (not (nil? leader))))
+                             (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
 
-        converted-filtered-meta (Util/getLeadersByTopicPartition metadata accept-topic accept-partition)]
+        converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition)]
 
     converted-filtered-meta))
 

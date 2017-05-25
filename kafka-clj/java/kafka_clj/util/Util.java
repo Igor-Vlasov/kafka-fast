@@ -19,9 +19,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.nio.ByteBuffer;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPInputStream;
 
@@ -232,7 +230,7 @@ public class Util {
        }
     }
 
-    public static Map<String, Map<Integer, Map<Keyword, Object>>> getLeadersByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartitionLeader)
+    public static Map<String, Map<Integer, Map<Keyword, Object>>> getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition)
     {
         Map<String, Map<Integer, Map<Keyword, Object>>> result = new HashMap<>();
 
@@ -240,19 +238,32 @@ public class Util {
         {
             if(Boolean.TRUE.equals(acceptTopic.invoke(topicMeta)))
             {
-                Map<Integer, Map<Keyword, Object>> partitionLeaders = new HashMap<>();
+                Map<Integer, Map<Keyword, Object>> partitionMetas = new HashMap<>();
                 for(MetadataResponse.PartitionMetadata partitionMeta : topicMeta.partitionMetadata())
                 {
-                    if(Boolean.TRUE.equals(acceptPartitionLeader.invoke(topicMeta, partitionMeta)))
+                    if(Boolean.TRUE.equals(acceptPartition.invoke(topicMeta, partitionMeta)))
                     {
-                        Map<Keyword, Object> leaderHostInfo = new HashMap<>();
+                        Map<Keyword, Object> metaInfo = new HashMap<>();
                         Node leader = partitionMeta.leader();
-                        leaderHostInfo.put(Keyword.intern("host"), leader.host());
-                        leaderHostInfo.put(Keyword.intern("port"), leader.port());
-                        partitionLeaders.put(partitionMeta.partition(), leaderHostInfo);
+                        List<Map<Keyword, Object>> nodes = new ArrayList<>();
+                        for(Node isrNode : partitionMeta.isr())
+                        {
+                            Map<Keyword, Object> isrNodeMap = new HashMap<>();
+                            isrNodeMap.put(Keyword.intern("host"), isrNode.host());
+                            isrNodeMap.put(Keyword.intern("port"), isrNode.port());
+                            nodes.add(isrNodeMap);
+                        }
+
+                        metaInfo.put(Keyword.intern("host"), leader.host());
+                        metaInfo.put(Keyword.intern("port"), leader.port());
+                        metaInfo.put(Keyword.intern("isr"), nodes);
+                        metaInfo.put(Keyword.intern("id"), partitionMeta.partition());
+                        metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
+
+                        partitionMetas.put(partitionMeta.partition(), metaInfo);
                     }
                 }
-                result.put(topicMeta.topic(), partitionLeaders);
+                result.put(topicMeta.topic(), partitionMetas);
             }
         }
 
