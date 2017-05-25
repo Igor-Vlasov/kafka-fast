@@ -230,7 +230,16 @@ public class Util {
        }
     }
 
-    public static Map<String, List<Map<Keyword, Object>>> getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition)
+    private static Comparator<Map<Keyword, Object>> PARTITIONS_META_COMP = new Comparator<Map<Keyword, Object>>() {
+        @Override
+        public int compare(Map<Keyword, Object> o1, Map<Keyword, Object> o2) {
+            int p1 = (Integer)o1.get(Keyword.intern("id"));
+            int p2 = (Integer)o2.get(Keyword.intern("id"));
+            return p1 > p2 ? 1 : (p2 < p1 ? -1 : 0 );
+        }
+    };
+
+    public static Map<String, List<Map<Keyword, Object>>> getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition, Set<Map<Keyword, Object>> hosts)
     {
         Map<String, List<Map<Keyword, Object>>> result = new HashMap<>();
 
@@ -252,10 +261,14 @@ public class Util {
                             isrNodeMap.put(Keyword.intern("host"), isrNode.host());
                             isrNodeMap.put(Keyword.intern("port"), isrNode.port());
                             nodes.add(isrNodeMap);
+                            hosts.add(isrNodeMap);
                         }
 
                         metaInfo.put(Keyword.intern("host"), leader.host());
                         metaInfo.put(Keyword.intern("port"), leader.port());
+
+                        hosts.add(new HashMap<>(metaInfo));
+
                         metaInfo.put(Keyword.intern("isr"), nodes);
                         metaInfo.put(Keyword.intern("id"), partitionMeta.partition());
                         metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
@@ -263,6 +276,7 @@ public class Util {
                         partitionMetas.add(metaInfo);
                     }
                 }
+                Collections.sort(partitionMetas, PARTITIONS_META_COMP);
                 result.put(topicMeta.topic(), partitionMetas);
             }
         }

@@ -24,7 +24,8 @@
     (java.nio ByteBuffer)
     (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata RequestHeader)
     (org.apache.kafka.clients NetworkClient)
-    (org.apache.kafka.common.protocol Errors)))
+    (org.apache.kafka.common.protocol Errors)
+    (java.util HashSet)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
@@ -130,11 +131,11 @@
                                                          ", error: " (Util/errorToString error-obj)))
                                  leader (.leader partitionMeta)]
                              (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
-
-        converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition)
+        hosts (HashSet.)
+        converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition hosts)
         _ (info "Meta after filtering and conversion: " converted-filtered-meta)]
 
-    converted-filtered-meta))
+    [converted-filtered-meta hosts]))
 
   (defn safe-nth [coll i]
     (let [v (vec coll)]
@@ -197,24 +198,12 @@
    "
   [{:keys [brokers-ref metadata-ref] :as connector} conf]
 
-    (when-let [meta (get-metadata connector conf)]
-
+    (when-let [[meta hosts] (get-metadata connector conf)]
 
       (let [select-host #(select-keys % [:host :port])
-
-            hosts (->>                                      ;;extract the host and isr hosts into a set from the meta data
-                    meta
-                    vals
-                    flatten
-                    (mapcat #(conj (map select-host (:isr %))
-                                   (select-host %)))
-
-                    (filter #(every? (complement nil?) (vals %)))
-
-                    (into #{}))
-
-            hosts-remove (clojure.set/difference @brokers-ref hosts)
-            hosts-add (clojure.set/difference hosts @brokers-ref)]
+            hosts-set (set hosts)
+            hosts-remove (clojure.set/difference @brokers-ref hosts-set)
+            hosts-add (clojure.set/difference hosts-set @brokers-ref)]
 
         (doseq [host hosts-add]
           (tcp-driver/add-host (:driver connector) host))
