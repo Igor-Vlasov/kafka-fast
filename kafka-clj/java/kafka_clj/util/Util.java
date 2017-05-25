@@ -1,7 +1,9 @@
 package kafka_clj.util;
 
 import clojure.lang.IFn;
+import clojure.lang.IPersistentMap;
 import clojure.lang.Keyword;
+import clojure.lang.PersistentHashMap;
 import com.alexkasko.unsafe.offheap.OffHeapMemory;
 import io.netty.buffer.ByteBuf;
 import net.jpountz.lz4.LZ4BlockInputStream;
@@ -230,50 +232,50 @@ public class Util {
        }
     }
 
-    private static Comparator<Map<Keyword, Object>> PARTITIONS_META_COMP = new Comparator<Map<Keyword, Object>>() {
+    private static Comparator<IPersistentMap> PARTITIONS_META_COMP = new Comparator<IPersistentMap>() {
         @Override
-        public int compare(Map<Keyword, Object> o1, Map<Keyword, Object> o2) {
-            int p1 = (Integer)o1.get(Keyword.intern("id"));
-            int p2 = (Integer)o2.get(Keyword.intern("id"));
-            return p1 > p2 ? 1 : (p2 < p1 ? -1 : 0 );
+        public int compare(IPersistentMap o1, IPersistentMap o2) {
+            int p1 = (Integer)o1.valAt(Keyword.intern("id"));
+            int p2 = (Integer)o2.valAt(Keyword.intern("id"));
+            return p1 > p2 ? 1 : (p1 < p2 ? -1 : 0 );
         }
     };
 
-    public static Map<String, List<Map<Keyword, Object>>> getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition, Set<Map<Keyword, Object>> hosts)
+    public static IPersistentMap getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition, Set<IPersistentMap> hosts)
     {
-        Map<String, List<Map<Keyword, Object>>> result = new HashMap<>();
+        Map<String, List<IPersistentMap>> result = new HashMap<>();
 
         for(MetadataResponse.TopicMetadata topicMeta : metadata.topicMetadata())
         {
             if(Boolean.TRUE.equals(acceptTopic.invoke(topicMeta)))
             {
-                List<Map<Keyword, Object>> partitionMetas = new ArrayList<>();
+                List<IPersistentMap> partitionMetas = new ArrayList<>();
                 for(MetadataResponse.PartitionMetadata partitionMeta : topicMeta.partitionMetadata())
                 {
                     if(Boolean.TRUE.equals(acceptPartition.invoke(topicMeta, partitionMeta)))
                     {
                         Map<Keyword, Object> metaInfo = new HashMap<>();
                         Node leader = partitionMeta.leader();
-                        List<Map<Keyword, Object>> nodes = new ArrayList<>();
+                        List<IPersistentMap> nodes = new ArrayList<>();
                         for(Node isrNode : partitionMeta.isr())
                         {
                             Map<Keyword, Object> isrNodeMap = new HashMap<>();
                             isrNodeMap.put(Keyword.intern("host"), isrNode.host());
                             isrNodeMap.put(Keyword.intern("port"), isrNode.port());
-                            nodes.add(isrNodeMap);
-                            hosts.add(isrNodeMap);
+                            nodes.add(PersistentHashMap.create(isrNodeMap));
+                            hosts.add(PersistentHashMap.create(isrNodeMap));
                         }
 
                         metaInfo.put(Keyword.intern("host"), leader.host());
                         metaInfo.put(Keyword.intern("port"), leader.port());
 
-                        hosts.add(new HashMap<>(metaInfo));
+                        hosts.add(PersistentHashMap.create(metaInfo));
 
                         metaInfo.put(Keyword.intern("isr"), nodes);
                         metaInfo.put(Keyword.intern("id"), partitionMeta.partition());
                         metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
 
-                        partitionMetas.add(metaInfo);
+                        partitionMetas.add(PersistentHashMap.create(metaInfo));
                     }
                 }
                 Collections.sort(partitionMetas, PARTITIONS_META_COMP);
@@ -281,7 +283,7 @@ public class Util {
             }
         }
 
-        return result;
+        return PersistentHashMap.create(result);
     }
 
     public static String errorToString(Errors error)
