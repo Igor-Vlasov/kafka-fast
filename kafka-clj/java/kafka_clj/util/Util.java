@@ -241,6 +241,11 @@ public class Util {
         }
     };
 
+    private static Set<Errors> PARTITION_ERRORS_TO_IGNORE = new HashSet<>();
+    static{
+        PARTITION_ERRORS_TO_IGNORE.add(Errors.REPLICA_NOT_AVAILABLE); // comes in case of only one replica down, this should not stop consumption
+    }
+
     public static IPersistentMap getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition, Set<IPersistentMap> hosts)
     {
         Map<String, List<IPersistentMap>> result = new HashMap<>();
@@ -273,7 +278,10 @@ public class Util {
 
                         metaInfo.put(Keyword.intern("isr"), nodes);
                         metaInfo.put(Keyword.intern("id"), partitionMeta.partition());
-                        metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
+                        if(PARTITION_ERRORS_TO_IGNORE.contains(partitionMeta.error()))
+                            metaInfo.put(Keyword.intern("error-code"), Errors.NONE.code());
+                        else
+                            metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
 
                         partitionMetas.add(PersistentHashMap.create(metaInfo));
                     }
