@@ -109,33 +109,35 @@
         resp-buff (ByteBuffer/wrap
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
-        metadata (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
+        metadata (try
+                   (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
                       (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
                                       (short protocol/API_VERSION)
                                       (get conf :client-id "1")
                                       (get conf :correlation-id 1))))
+                   (catch Exception exc (error exc)))]
+        (if metadata
+          (let [accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
+                               (let [^Errors error-obj (.error topicMeta)
+                                     error-code (.code error-obj)]
+                                 (if (zero? error-code)
+                                   (not (.isInternal topicMeta))
+                                   (error "Encountered topic error during metadata refresh, topic: "
+                                          (.topic topicMeta) ", error: " (Util/errorToString error-obj) ", topic metadata discarded"))))
 
-        accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
-                       (let [^Errors error-obj (.error topicMeta)
-                             error-code (.code error-obj)]
-                         (if (zero? error-code)
-                           (not (.isInternal topicMeta))
-                           (error "Encountered topic error during metadata refresh, topic: "
-                                  (.topic topicMeta) ", error: " (Util/errorToString error-obj) ", topic metadata discarded"))))
-
-        accept-partition (fn [^MetadataResponse$TopicMetadata topicMeta ^MetadataResponse$PartitionMetadata partitionMeta]
-                           (let [^Errors error-obj (.error partitionMeta)
-                                 error-code (.code error-obj)
-                                 _ (when (not (zero? error-code)) (warn "Encountered partition error during metadata refresh, topic: "
-                                                         (.topic topicMeta) ", partition: " (.partition partitionMeta)
-                                                         ", error: " (Util/errorToString error-obj)))
-                                 leader (.leader partitionMeta)]
-                             (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
-        hosts (HashSet.)
-        converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition hosts)
-        _ (info "Meta after filtering and conversion: " converted-filtered-meta)]
-
-    [converted-filtered-meta hosts]))
+                accept-partition (fn [^MetadataResponse$TopicMetadata topicMeta ^MetadataResponse$PartitionMetadata partitionMeta]
+                                   (let [^Errors error-obj (.error partitionMeta)
+                                         error-code (.code error-obj)
+                                         _ (when (not (zero? error-code)) (warn "Encountered partition error during metadata refresh, topic: "
+                                                                                (.topic topicMeta) ", partition: " (.partition partitionMeta)
+                                                                                ", error: " (Util/errorToString error-obj)))
+                                         leader (.leader partitionMeta)]
+                                     (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
+                hosts (HashSet.)
+                converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition hosts)
+                _ (info "Meta after filtering and conversion: " converted-filtered-meta)]
+            [converted-filtered-meta hosts])
+          [nil nil])))
 
   (defn safe-nth [coll i]
     (let [v (vec coll)]
@@ -197,29 +199,28 @@
         if meta is nil, any updates are skipped
    "
   [{:keys [brokers-ref metadata-ref] :as connector} conf]
+  (when (not (.get (:closed connector)))
+    (let [[meta hosts] (get-metadata connector conf)]
+      (when (not (nil? meta))
+        (let [hosts-set (set hosts)
+              hosts-remove (clojure.set/difference @brokers-ref hosts-set)
+              hosts-add (clojure.set/difference hosts-set @brokers-ref)]
 
-    (when-let [[meta hosts] (get-metadata connector conf)]
+          (doseq [host hosts-add]
+            (tcp-driver/add-host (:driver connector) host))
 
-      (let [select-host #(select-keys % [:host :port])
-            hosts-set (set hosts)
-            hosts-remove (clojure.set/difference @brokers-ref hosts-set)
-            hosts-add (clojure.set/difference hosts-set @brokers-ref)]
+          ;;TODO we cannot use remove if it means having no more hosts
+          ;; solution would be to remove only non bootstrap broker nodes
+          ;(doseq [host hosts-remove]
+          ;  (tcp-driver/remove-host (:driver connector) host))
 
-        (doseq [host hosts-add]
-          (tcp-driver/add-host (:driver connector) host))
+          (dosync
+            (commute
+              brokers-ref #(into #{} (concat hosts %)))
+            (commute
+              metadata-ref (constantly meta)))
 
-        ;;TODO we cannot use remove if it means having no more hosts
-        ;; solution would be to remove only non bootstrap broker nodes
-        ;(doseq [host hosts-remove]
-        ;  (tcp-driver/remove-host (:driver connector) host))
-
-        (dosync
-          (commute
-            brokers-ref #(into #{} (concat hosts %)))
-          (commute
-            metadata-ref (constantly meta)))
-
-        meta)))
+          meta)))))
 
   (defn blacklisted? [{:keys [driver] :as st} host-address]
     {:pre [driver (:host host-address) (:port host-address)]}
