@@ -19,7 +19,7 @@
     [schema.core :as s])
   (:import
     (io.netty.buffer Unpooled ByteBuf)
-    (kafka_clj.util Util)
+    (kafka_clj.util Util TestUtils)
     (java.util.concurrent.atomic AtomicBoolean)
     (java.nio ByteBuffer)
     (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata RequestHeader)
@@ -89,6 +89,7 @@
       (write-short-string client-id)                        ;short + client-id bytes
       (.writeInt (int 0))))                                 ;write empty topic, dont use -1 (this means nil), list to receive metadata on all topics
 
+(defonce ^AtomicBoolean sucessParse (AtomicBoolean. false))
 
 (defn send-recv-metadata-request
   "Writes out a metadata request to the producer con"
@@ -110,12 +111,16 @@
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
         metadata (try
-                   (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
-                      (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
-                                      (short protocol/API_VERSION)
-                                      (get conf :client-id "1")
-                                      (get conf :correlation-id 1))))
-                   (catch Exception exc (error exc)))]
+                   (let [parsed (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
+                                                                         (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
+                                                                                         (short protocol/API_VERSION)
+                                                                                         (get conf :client-id "1")
+                                                                                         (get conf :correlation-id 1))))]
+                     (when (not (.get sucessParse))
+                       (do (TestUtils/dumpBinaryMessage "SuccessMetadata" (.array resp-buff))
+                           (.set sucessParse true)))
+                     parsed)
+                   (catch Exception exc (do (TestUtils/dumpBinaryMessage "FailedMetadata" (.array resp-buff)) (error exc))))]
         (if metadata
           (let [accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
                                (let [^Errors error-obj (.error topicMeta)
