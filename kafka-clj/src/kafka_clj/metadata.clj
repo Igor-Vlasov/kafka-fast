@@ -184,6 +184,7 @@
     "
     [{:keys [driver]} conf]
     (:pre [driver])
+    (info "Sending metadata request...")
     (tcp-driver/send-f driver
                        (fn [conn]
                          (locking conn

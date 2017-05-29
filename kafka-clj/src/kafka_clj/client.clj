@@ -126,10 +126,7 @@
           (do
             (kafka-metadata/update-metadata! metadata-connector (:conf state))
             (when (empty? (kafka-metadata/get-cached-metadata metadata-connector topic))
-              (try-create-topic connector topic)
-              (let [new-meta (kafka-metadata/update-metadata! metadata-connector (:conf state))]
-                (debug "New metadata after try-create-topic: " new-meta)))
-
+              (try-create-topic connector topic))
             (recur (inc retry))))))))
 
 (defn close
@@ -447,7 +444,7 @@
 
 
     (.scheduleWithFixedDelay scheduled-service ^Runnable (fn [] (try (update-metadata) (catch Exception e (do (error e e)
-                                                                                                              (async/>!! metadata-error-ch e))))) 0 10000 TimeUnit/MILLISECONDS)
+                                                                                                              (async/>!! metadata-error-ch e))))) 0 5000 TimeUnit/MILLISECONDS)
 
     (->
       connector2

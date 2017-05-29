@@ -78,8 +78,6 @@
    Side effects: Send data to redis work-queue"
   [{:keys [metadata-connector work-queue redis-conn conf] :as state} w-unit]
   (try
-    (kafka-metadata/update-metadata! metadata-connector conf)
-
     ;we try to recalculate the broker, if any exception we reput the w-unit on the queue
     (let [sorted-wu (into (sorted-map) w-unit)
           broker (kafka-metadata/get-cached-metadata metadata-connector (:topic w-unit) (:partition w-unit))]
@@ -322,7 +320,7 @@
   {:pre [metadata-connector conf stats-atom]}
   (try
 
-    (let [meta (kafka-metadata/update-metadata! metadata-connector conf)
+    (let [meta @(:metadata-ref metadata-connector)
 
           offsets (cutil/get-broker-offsets state meta topics conf)
 
