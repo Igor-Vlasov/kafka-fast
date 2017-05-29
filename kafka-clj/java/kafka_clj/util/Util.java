@@ -10,7 +10,9 @@ import net.jpountz.lz4.LZ4BlockInputStream;
 import net.jpountz.lz4.LZ4BlockOutputStream;
 import org.apache.commons.io.IOUtils;
 import org.apache.kafka.common.Node;
+import org.apache.kafka.common.TopicPartition;
 import org.apache.kafka.common.protocol.Errors;
+import org.apache.kafka.common.requests.ListOffsetResponse;
 import org.apache.kafka.common.requests.MetadataResponse;
 import org.xerial.snappy.Snappy;
 import org.xerial.snappy.SnappyInputStream;
@@ -291,6 +293,38 @@ public class Util {
             }
         }
 
+        return PersistentHashMap.create(result);
+    }
+
+    public static IPersistentMap getPartitionOffsetsByTopic(ListOffsetResponse offsetsResp, String topic, boolean useEarliest, IFn acceptPartitionData) throws Exception {
+        List<IPersistentMap> records = new ArrayList<>();
+
+        for(Map.Entry<TopicPartition, ListOffsetResponse.PartitionData> respDataEntry : offsetsResp.responseData().entrySet())
+        {
+            TopicPartition topicPartition = respDataEntry.getKey();
+
+            if(topic.equals(topicPartition.topic()))
+            {
+                ListOffsetResponse.PartitionData partitionData = respDataEntry.getValue();
+                if(Boolean.TRUE.equals(acceptPartitionData.invoke(topicPartition, partitionData)))
+                {
+                    Map<Keyword, Object> offsetRecord = new HashMap<>();
+                    List<Long> offsets = partitionData.offsets;
+                    Collections.sort(offsets);
+                    offsetRecord.put(Keyword.intern("offset"),
+                            useEarliest?offsets.get(0):offsets.get(offsets.size()-1));
+                    offsetRecord.put(Keyword.intern("all-offsets"), offsets);
+                    offsetRecord.put(Keyword.intern("error-code"), partitionData.errorCode);
+                    offsetRecord.put(Keyword.intern("locked"), false);
+                    offsetRecord.put(Keyword.intern("partition"), topicPartition.partition());
+
+                    records.add(PersistentHashMap.create(offsetRecord));
+                }
+            }
+        }
+
+        Map<String, List<IPersistentMap>> result = new HashMap<>();
+        result.put(topic, records);
         return PersistentHashMap.create(result);
     }
 

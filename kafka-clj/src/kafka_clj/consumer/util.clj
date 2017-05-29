@@ -4,22 +4,20 @@
     [clojure.tools.logging :refer [info error debug]]
     [kafka-clj.metadata :as kafka-metadata]
     [schema.core :as s]
-    [kafka-clj.schemas :as schemas]))
+    [kafka-clj.schemas :as schemas])
+  (:import (org.apache.kafka.common.requests ListOffsetResponse ListOffsetResponse$PartitionData)
+           (kafka_clj.util Util)))
 
 
-(defn transform-offsets [topic offsets-response {:keys [use-earliest] :or {use-earliest true}}]
+(defn transform-offsets [topic ^ListOffsetResponse offsets-response {:keys [use-earliest] :or {use-earliest true}}]
   "Transforms [{:topic topic :partitions {:partition :error-code :offsets}}]
    to {topic [{:offset offset :partition partition}]}"
-  (let [topic-data (first (filter #(= (:topic %) topic) offsets-response))
-        partitions (:partitions topic-data)]
-    {(:topic topic-data)
-      (doall (for [{:keys [partition error-code offsets]} partitions]
-               {:offset (if use-earliest (last offsets) (first offsets))
-                :all-offsets offsets
-                :error-code error-code
-                :locked false
-                :partition partition}))}))
-
+  (Util/getPartitionOffsetsByTopic offsets-response topic use-earliest (fn [topicPartition ^ListOffsetResponse$PartitionData partitionData]
+                                                                         (let [offsets (.offsets partitionData)
+                                                                               error-code (.errorCode partitionData)]
+                                                                           (if (zero? error-code)
+                                                                             (and (not (nil? offsets)) (not (empty? offsets)))
+                                                                             (error "Error when reading list of offsets for " topicPartition ", error code: " error-code))))))
 
 (defn get-offsets [metadata-connector host-address topic partitions]
   {:pre [metadata-connector
