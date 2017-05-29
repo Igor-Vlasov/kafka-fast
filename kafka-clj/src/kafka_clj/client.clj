@@ -357,6 +357,7 @@
   (let [^ScheduledExecutorService scheduled-service (Executors/newSingleThreadScheduledExecutor (daemon-thread-factory))
         async-ctx (fthreads/create-exec-service io-threads)
         metadata-connector (kafka-clj.metadata/connector bootstrap-brokers conf)
+        metadata-update-connector (kafka-clj.metadata/connector bootstrap-brokers conf)
 
         ;;TODO implement acks
 
@@ -407,7 +408,7 @@
         connector2 (assoc connector :msg-ch msg-ch)
 
         _ (do "calling update-metadata!: " bootstrap-brokers " conf " conf)
-        update-metadata #(kafka-metadata/update-metadata! metadata-connector conf)
+        update-metadata #(kafka-metadata/update-metadata! metadata-update-connector conf)
 
         persist-delay-thread (futils/fixdelay-thread 1000
                                                      (try
