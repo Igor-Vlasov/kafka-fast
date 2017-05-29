@@ -116,11 +116,13 @@
                                                                                          (short protocol/API_VERSION)
                                                                                          (get conf :client-id "1")
                                                                                          (get conf :correlation-id 1))))]
-                     (when (not (.get sucessParse))
-                       (do (TestUtils/dumpBinaryMessage "SuccessMetadata" (.array resp-buff))
-                           (.set sucessParse true)))
+                     ;(when (not (.get sucessParse))
+                     ;  (do (TestUtils/dumpBinaryMessage "SuccessMetadata" (.array resp-buff))
+                     ;      (.set sucessParse true)))
                      parsed)
-                   (catch Exception exc (do (TestUtils/dumpBinaryMessage "FailedMetadata" (.array resp-buff)) (error exc))))]
+                   (catch Exception exc (do
+                                          ;(TestUtils/dumpBinaryMessage "FailedMetadata" (.array resp-buff))
+                                          (error exc))))]
         (if metadata
           (let [accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
                                (let [^Errors error-obj (.error topicMeta)

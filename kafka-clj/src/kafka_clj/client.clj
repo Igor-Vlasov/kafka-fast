@@ -135,6 +135,7 @@
   [{{:keys [^AtomicBoolean shutdown-flag
             ^AtomicLong activity-counter
             metadata-connector
+            metadata-update-connector
             scheduled-service
             retry-cache]} :state
     msg-ch                :msg-ch
@@ -154,6 +155,8 @@
 
   (.shutdownNow ^ScheduledExecutorService scheduled-service)
   (kafka-metadata/close metadata-connector)
+  (kafka-metadata/close metadata-update-connector)
+
   ;(kafka-metadata/close send-connector)
 
   ;;before we close the retry-cache we need to close
@@ -398,6 +401,7 @@
                    :retry-cache retry-cache
                    :flush-on-write flush-on-write
                    :metadata-connector metadata-connector
+                   :metadata-update-connector metadata-update-connector
                    ;:send-connector send-connector
                    :state state}
 
@@ -408,7 +412,7 @@
         connector2 (assoc connector :msg-ch msg-ch)
 
         _ (do "calling update-metadata!: " bootstrap-brokers " conf " conf)
-        update-metadata #(kafka-metadata/update-metadata! metadata-update-connector conf)
+        update-metadata #(when (not (.get (:closed metadata-update-connector))) (kafka-metadata/update-metadata! metadata-update-connector conf))
 
         persist-delay-thread (futils/fixdelay-thread 1000
                                                      (try
