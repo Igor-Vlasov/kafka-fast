@@ -6,6 +6,7 @@
     [kafka-clj.consumer.work-organiser :refer [create-organiser! close-organiser! calculate-new-work]]
     [kafka-clj.consumer.consumer :refer [consume! close-consumer! consumer-pool-stats]]
     [kafka-clj.redis.core :as redis]
+    [kafka-clj.consumer.util :as utils]
     [com.stuartsierra.component :as component]
     [fun-utils.core :refer [fixdelay-thread stop-fixdelay buffered-chan]]
     [clojure.tools.logging :refer [info error]]
@@ -23,13 +24,15 @@
 
 (defn shutdown-node!
   "Closes the consumer node"
-  [{:keys [org consumer msg-ch calc-work-thread redis-conn shutdown-flag] :as node}]
-  {:pre [org consumer msg-ch calc-work-thread redis-conn shutdown-flag]}
+  [{:keys [org consumer msg-ch calc-work-thread-close calc-work-thread-join redis-conn shutdown-flag] :as node}]
+  {:pre [org consumer msg-ch calc-work-thread-close calc-work-thread-join redis-conn shutdown-flag]}
   (info "Starting node component shutdown...")
   (.set shutdown-flag true)
   (info "Showdown flag is set")
   (info "Sending calc-work-thread stop request...")
-  (stop-fixdelay calc-work-thread)
+  (stop-fixdelay calc-work-thread-close)
+  (info "Waiting for calc-work-thread to stop...")
+  (<!! calc-work-thread-join)
   (info "Closing comsumer...")
   (safe-call close-consumer! consumer)
   (info "Closing organizer...")
@@ -65,7 +68,7 @@
   [org topics & {:keys [freq] :or {freq 10000}}]
   {:pre [org topics]}
 
-  (fixdelay-thread
+  (utils/fixdelay-thread-ext
     freq
     (safe-call work-calculate-delegate! org @topics)))
 
@@ -156,7 +159,7 @@
                              :redis-conn redis-conn
                              :msg-ch msg-ch
                              :work-unit-event-ch work-unit-event-ch))
-        calc-work-thread (start-work-calculate (assoc org :redis-conn redis-conn
+        [calc-work-thread-close calc-work-thread-join] (start-work-calculate (assoc org :redis-conn redis-conn
                                                           :stats-atom stats-atom) topics-ref :freq (get conf :work-calculate-freq 10000))
         ]
 
@@ -169,7 +172,8 @@
      :org org :msg-ch msg-ch
      :consumer consumer
      :stats-atom stats-atom
-     :calc-work-thread calc-work-thread
+     :calc-work-thread-close calc-work-thread-close
+     :calc-work-thread-join calc-work-thread-join
      :group-name         group-name
      :redis-conn         redis-conn
      :work-unit-event-ch work-unit-event-ch}))

@@ -2,6 +2,7 @@
   (:require
     [kafka-clj.fetch :as fetch]
     [clojure.tools.logging :refer [info error debug]]
+    [clojure.core.async :refer [go <! >! <!! >!! alts! alts!! chan close! thread timeout go-loop]]
     [kafka-clj.metadata :as kafka-metadata]
     [schema.core :as s]
     [kafka-clj.schemas :as schemas])
@@ -79,3 +80,18 @@
           m))
       {}
       metadata)))
+
+(defmacro fixdelay-thread-ext
+  "Runs the body every ms after the last appication of body completed, the code is run in a separate Thread
+   Returns a channel that when passed to stop-fixdelay will close this thread"
+  [ms & body]
+  `(let [close-ch# (chan)
+         join-ch# (thread
+           (loop []
+             (let [[v# ch#] (alts!! [close-ch# (timeout ~ms)])]
+               (if (not (= close-ch# ch#))
+                 (do
+                   ~@body
+                   (recur))))))]
+
+     [close-ch# join-ch#]))
