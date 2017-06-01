@@ -25,10 +25,12 @@
     (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata RequestHeader)
     (org.apache.kafka.clients NetworkClient)
     (org.apache.kafka.common.protocol Errors)
-    (java.util HashSet Set)))
+    (java.util HashSet Set ArrayList Collections List)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
+
+(defonce ^List connectors (Collections/synchronizedList (ArrayList.)))
 
 (defn- convert-metadata-response
   "
@@ -206,21 +208,23 @@
   "Updates the borkers-ref, metadata-ref and add/remove hosts as per the metadata from the driver
         if meta is nil, any updates are skipped
    "
-  [{:keys [closed bootstrap-brokers brokers-ref metadata-ref] :as connector} conf]
+  [{:keys [closed bootstrap-brokers brokers-ref metadata-ref] :as meta-connector} conf]
   (when (not (.get closed))
-    (let [[meta ^Set hosts] (get-metadata connector conf)]
+    (let [[meta ^Set hosts] (get-metadata meta-connector conf)]
       (when (not (nil? meta))
         (let [hosts-set (if (.isEmpty hosts) (set bootstrap-brokers) (set hosts))
               hosts-remove (clojure.set/difference @brokers-ref hosts-set)
               hosts-add (clojure.set/difference hosts-set @brokers-ref)]
 
-          (doseq [host hosts-add]
-            (tcp-driver/add-host (:driver connector) host))
+          (doseq [connector connectors]
+            (doseq [host hosts-add]
+              (tcp-driver/add-host (:driver connector) host)))
 
           ;; to remove all brockers we need to get empty hosts metadata,
           ;; but if we get empty hosts metadata we will use bootstrap-brokers set
-          (doseq [host hosts-remove]
-            (tcp-driver/remove-host (:driver connector) host))
+          (doseq [connector connectors]
+            (doseq [host hosts-remove]
+              (tcp-driver/remove-host (:driver connector) host)))
 
           (dosync
             (commute
@@ -238,14 +242,16 @@
     "Creates a tcp pool and initiate for all brokers"
   [bootstrap-brokers conf]
   (let [driver (tcp/driver bootstrap-brokers :retry-limit (get conf :retry-limit 3) :pool-conf conf)
-        brokers (into #{} bootstrap-brokers)]
+        brokers (into #{} bootstrap-brokers)
+        result {:conf         conf
+                :driver       driver
+                :metadata-ref (ref nil)
+                :bootstrap-brokers bootstrap-brokers
+                :brokers-ref  (ref brokers)
+                :closed       (AtomicBoolean. false)}
+        _ (.add connectors result)]
 
-    {:conf         conf
-     :driver       driver
-     :metadata-ref (ref nil)
-     :bootstrap-brokers bootstrap-brokers
-     :brokers-ref  (ref brokers)
-     :closed       (AtomicBoolean. false)}))
+    result))
 
 (defn close [{:keys [driver closed]}]
   {:pre [driver closed]}
