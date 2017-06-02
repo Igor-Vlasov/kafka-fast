@@ -115,6 +115,7 @@
   "If the status of the w-unit is :ok the work-unit is checked for remaining work, otherwise its completed, if :fail the work-unit is sent to the work-queue.
    Must be run inside a redis connection e.g car/wcar redis-conn"
   [state {:keys [status] :as w-unit}]
+  (info "work-complete-handle: status: " status " wu: " w-unit)
   (condp = status
     :fail (work-complete-fail! state w-unit)
     :fail-delete (work-complete-fail-delete! state w-unit)
@@ -241,8 +242,11 @@
               ts (System/currentTimeMillis)]
 
           (redis/wcar redis-conn
+                      (info "Pushing WU '" work-units "' to work queue " work-queue " for broker " broker)
                       ;we must use sorted-map here otherwise removing the wu will not be possible due to serialization with arbritary order of keys
                       (redis/lpush* redis-conn work-queue (map #(assoc (into (sorted-map) %) :producer broker :ts ts) work-units))
+                      (info "Setting max offset in redis for '" (str "/" group-name "/offsets/" topic "/" partition)
+                            "' to " max-offset)
                       (redis/set redis-conn (str "/" group-name "/offsets/" topic "/" partition) max-offset)))))))
 
 ;(defn get-offset-from-meta [{:keys [metadata-connector conf]} topic partition]
@@ -323,7 +327,7 @@
     (let [meta @(:metadata-ref metadata-connector)
 
           offsets (cutil/get-broker-offsets state meta topics conf)
-
+          _ (info "Recieved offsets from kafka: " offsets)
           offset-send-f (fn [broker topic offset-data]
                           (try
                             ;we map :offset to max of :offset and :all-offets

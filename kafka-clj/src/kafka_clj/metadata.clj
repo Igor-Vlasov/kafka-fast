@@ -218,13 +218,13 @@
 
           (doseq [connector connectors]
             (doseq [host hosts-add]
-              (tcp-driver/add-host (:driver connector) host)))
-
-          ;; to remove all brockers we need to get empty hosts metadata,
-          ;; but if we get empty hosts metadata we will use bootstrap-brokers set
-          (doseq [connector connectors]
+              (do (info "Adding host " host " to driver " (:driver connector))
+                  (tcp-driver/add-host (:driver connector) host)))
+            ;; to remove all brockers we need to get empty hosts metadata,
+            ;; but if we get empty hosts metadata we will use bootstrap-brokers set
             (doseq [host hosts-remove]
-              (tcp-driver/remove-host (:driver connector) host)))
+              (do (info "Removing host " host " from driver " (:driver connector))
+                  (tcp-driver/remove-host (:driver connector) host))))
 
           (dosync
             (commute
