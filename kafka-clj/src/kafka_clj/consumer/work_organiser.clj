@@ -361,7 +361,6 @@
 
       state)
     (catch Exception e (do
-                         (.printStackTrace e)
                          (error e e)
                          state))))
 

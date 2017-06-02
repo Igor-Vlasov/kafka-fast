@@ -61,12 +61,17 @@
                                                    ;; ]
                                                    (if (.get (:closed metadata-connector))
                                                    m
-                                                   (assoc m
-                                                     broker
-                                                     (get-offsets metadata-connector
-                                                                  broker
-                                                                  topic ;;produce [{:partition N} ...]
-                                                                  (map second broker-partition-pairs)))))
+                                                   (let [broker-offsets (try
+                                                                          (get-offsets metadata-connector
+                                                                      broker
+                                                                      topic ;;produce [{:partition N} ...]
+                                                                      (map second broker-partition-pairs))
+                                                                          (catch Exception exc (error exc)))]
+                                                     (if broker-offsets
+                                                       (assoc m
+                                                         broker
+                                                         broker-offsets)
+                                                       m))))
                                                  {}
                                                  broker-partition-pairs)]
                       offset-maps))]

@@ -170,18 +170,6 @@
 
        (get metadata topic))))
 
-(defn get-cached-brokers
-  "Return the current registered brokers in the metadata cache"
-  ([metadata-connector]
-   @(:brokers-ref metadata-connector))
-
-  ([metadata-connector topic]
-   {:pre [metadata-connector (string? topic)]}
-
-   (let [metadata @(:metadata-ref metadata-connector)]
-
-     (get metadata topic))))
-
   (defn get-metadata
     "
     Return metadata in the form ;;validates metadata responses like {\"abc\" [{:host \"localhost\", :port 50738, :isr [{:host \"localhost\", :port 50738}], :id 0, :error-code 0}]}\n
@@ -228,7 +216,7 @@
 
           (dosync
             (commute
-              brokers-ref #(into #{} (concat hosts %)))
+              brokers-ref (constantly hosts-set))
             (commute
               metadata-ref (constantly meta)))
 
