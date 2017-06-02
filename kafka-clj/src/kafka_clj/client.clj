@@ -381,6 +381,7 @@
 
         state {
                :metadata-connector metadata-connector
+               :metadata-update-connector metadata-update-connector
 
                :shutdown-flag      shutdown-flag
                :activity-counter   activity-counter
