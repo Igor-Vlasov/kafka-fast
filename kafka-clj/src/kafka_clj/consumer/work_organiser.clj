@@ -115,7 +115,6 @@
   "If the status of the w-unit is :ok the work-unit is checked for remaining work, otherwise its completed, if :fail the work-unit is sent to the work-queue.
    Must be run inside a redis connection e.g car/wcar redis-conn"
   [state {:keys [status] :as w-unit}]
-  (info "work-complete-handle: status: " status " wu: " w-unit)
   (condp = status
     :fail (work-complete-fail! state w-unit)
     :fail-delete (work-complete-fail-delete! state w-unit)
@@ -141,7 +140,7 @@
                   (work-complete-handler! state work-unit)
                   (redis/lrem redis-conn working-queue -1 (into (sorted-map) work-unit))))))
           (catch InterruptedException _ (info "Exit work complete loop"))
-          (catch Exception e (do (error e e) (.printStackTrace e)))))
+          (catch Exception e (error e))))
       (finally
         (.countDown shutdown-confirm)))))
 
@@ -201,7 +200,7 @@
          (s/validate schemas/PARTITION-OFFSET-DATA offset-datum)]}
   (try
     (assoc offset-datum :saved-offset (get-saved-offset state min-max-kafka-offsets topic (:partition offset-datum)))
-    (catch Throwable t (do (.printStackTrace t) (error t t) nil))))
+    (catch Throwable t (do (error t t) nil))))
 
 (defn max-value
   "Nil safe max function"
@@ -242,11 +241,8 @@
               ts (System/currentTimeMillis)]
 
           (redis/wcar redis-conn
-                      (info "Pushing WU '" work-units "' to work queue " work-queue " for broker " broker)
                       ;we must use sorted-map here otherwise removing the wu will not be possible due to serialization with arbritary order of keys
                       (redis/lpush* redis-conn work-queue (map #(assoc (into (sorted-map) %) :producer broker :ts ts) work-units))
-                      (info "Setting max offset in redis for '" (str "/" group-name "/offsets/" topic "/" partition)
-                            "' to " max-offset)
                       (redis/set redis-conn (str "/" group-name "/offsets/" topic "/" partition) max-offset)))))))
 
 ;(defn get-offset-from-meta [{:keys [metadata-connector conf]} topic partition]
@@ -327,12 +323,11 @@
     (let [meta @(:metadata-ref metadata-connector)
 
           offsets (cutil/get-broker-offsets state meta topics conf)
-          _ (info "Recieved offsets from kafka: " offsets)
           offset-send-f (fn [broker topic offset-data]
                           (try
                             ;we map :offset to max of :offset and :all-offets
                             (send-offsets-if-any! state broker topic (map #(assoc % :offset (apply max (:offset %) (:all-offsets %))) offset-data))
-                            (catch Exception e (do (error e e) (.printStackTrace e) (if error-handler (error-handler :meta state e))))))]
+                            (catch Exception e (do (error e e) (if error-handler (error-handler :meta state e))))))]
 
 
       ;; meta

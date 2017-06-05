@@ -113,17 +113,12 @@
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
         metadata (try
-                   (let [parsed (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
-                                                                         (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
-                                                                                         (short protocol/API_VERSION)
-                                                                                         (get conf :client-id "1")
-                                                                                         (get conf :correlation-id 1))))]
-                     ;(when (not (.get sucessParse))
-                     ;  (do (TestUtils/dumpBinaryMessage "SuccessMetadata" (.array resp-buff))
-                     ;      (.set sucessParse true)))
-                     parsed)
+                   (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
+                                                                   (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
+                                                                                   (short protocol/API_VERSION)
+                                                                                   (get conf :client-id "1")
+                                                                                   (get conf :correlation-id 1))))
                    (catch Exception exc (do
-                                          ;(TestUtils/dumpBinaryMessage "FailedMetadata" (.array resp-buff))
                                           (error exc))))]
         (if metadata
           (let [accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
@@ -143,8 +138,7 @@
                                          leader (.leader partitionMeta)]
                                      (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
                 hosts (HashSet.)
-                converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition hosts)
-                _ (info "Meta after filtering and conversion: " converted-filtered-meta)]
+                converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition hosts)]
             [converted-filtered-meta hosts])
           [nil nil])))
 
@@ -176,7 +170,6 @@
     "
     [{:keys [driver]} conf]
     (:pre [driver])
-    (info "Sending metadata request...")
     (tcp-driver/send-f driver
                        (fn [conn]
                          (locking conn

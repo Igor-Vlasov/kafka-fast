@@ -19,7 +19,6 @@
   (try
     (apply f args)
     (catch Exception e (do
-                         (.printStackTrace e)
                          (error e e)))))
 
 (defn shutdown-node!

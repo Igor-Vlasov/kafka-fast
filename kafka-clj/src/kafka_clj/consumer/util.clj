@@ -1,7 +1,7 @@
 (ns kafka-clj.consumer.util
   (:require
     [kafka-clj.fetch :as fetch]
-    [clojure.tools.logging :refer [info error debug]]
+    [clojure.tools.logging :refer [info warn error debug]]
     [clojure.core.async :refer [go <! >! <!! >!! alts! alts!! chan close! thread timeout go-loop]]
     [kafka-clj.metadata :as kafka-metadata]
     [schema.core :as s]
@@ -50,7 +50,6 @@
                           ;;produce {broker [[broker {:partition 0}] [broker {:partition 1}]]}
                           broker-partition-pairs (group-by first (map-indexed (fn [i host-info]
                                                                                 [host-info {:partition i}]) partition-info))
-                          _ (info "Broker-partition pairs: " broker-partition-pairs)
                           ;;produce -> {broker {topic [{:offset offset :partition partition}]}} for the speficic topic
                           offset-maps (reduce-kv (fn [m broker broker-partition-pairs]
                                                    ;; broker-partition-pairs
@@ -66,7 +65,7 @@
                                                                       broker
                                                                       topic ;;produce [{:partition N} ...]
                                                                       (map second broker-partition-pairs))
-                                                                          (catch Exception exc (info "get-offsets error for broker " broker " and topic " topic)))]
+                                                                          (catch Exception exc (warn "get-offsets error for broker " broker " and topic " topic)))]
                                                      (if broker-offsets
                                                        (assoc m
                                                          broker

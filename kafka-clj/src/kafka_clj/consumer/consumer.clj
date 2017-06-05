@@ -215,7 +215,6 @@
           (wu-api/publish-error-wu! state wu status offset)
           nil)))
     (catch Throwable ne (do
-                          (.printStackTrace ne)
                           (error ne ne)
                           (wu-api/publish-zero-consumed-wu! state wu)
                           nil))))
@@ -426,10 +425,10 @@
 
 (defn close-consumer! [{:keys [publish-exec-service exec-service metadata-connector ^AtomicBoolean shutdown-flag]}]
   (.set shutdown-flag true)
-  (info "closing publish-exec-serivce")
+  (info "Closing publish-exec-serivce")
   (threads/close! {:executor publish-exec-service} :timeout-ms 30000)
-  (info "closing exec-serivce")
+  (info "Closing exec-serivce")
   (threads/close! {:executor exec-service} :timeout-ms 30000)
-  (info "closing metadata-connector")
+  (info "Closing metadata-connector")
   (kafka-metadata/close metadata-connector)
-  (info "all consumer resources closed"))
+  (info "All consumer resources closed"))

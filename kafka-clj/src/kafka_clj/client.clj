@@ -88,7 +88,6 @@
                                                                      10000)))
                                       30000)]
 
-    (info "create-topic-request resp " resp)
     (when-not (#{0 36} (:error_code resp))
       (throw (RuntimeException. (str "Failed to create topic " topic " response " resp))))))
 
