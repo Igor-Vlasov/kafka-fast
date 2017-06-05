@@ -50,7 +50,7 @@
                           ;;produce {broker [[broker {:partition 0}] [broker {:partition 1}]]}
                           broker-partition-pairs (group-by first (map-indexed (fn [i host-info]
                                                                                 [host-info {:partition i}]) partition-info))
-
+                          _ (info "Broker-partition pairs: " broker-partition-pairs)
                           ;;produce -> {broker {topic [{:offset offset :partition partition}]}} for the speficic topic
                           offset-maps (reduce-kv (fn [m broker broker-partition-pairs]
                                                    ;; broker-partition-pairs
@@ -66,7 +66,7 @@
                                                                       broker
                                                                       topic ;;produce [{:partition N} ...]
                                                                       (map second broker-partition-pairs))
-                                                                          (catch Exception exc (error exc)))]
+                                                                          (catch Exception exc (info "get-offsets error for broker " broker " and topic " topic)))]
                                                      (if broker-offsets
                                                        (assoc m
                                                          broker

@@ -212,13 +212,13 @@
             ;; but if we get empty hosts metadata we will use bootstrap-brokers set
             (doseq [host hosts-remove]
               (do (info "Removing host " host " from driver " (:driver connector))
-                  (tcp-driver/remove-host (:driver connector) host))))
+                  (tcp-driver/remove-host (:driver connector) host)))
 
-          (dosync
-            (commute
-              brokers-ref (constantly hosts-set))
-            (commute
-              metadata-ref (constantly meta)))
+            (dosync
+              (commute
+                (:brokers-ref connector) (constantly hosts-set))
+              (commute
+                (:metadata-ref connector) (constantly meta))))
 
           meta)))))
 
