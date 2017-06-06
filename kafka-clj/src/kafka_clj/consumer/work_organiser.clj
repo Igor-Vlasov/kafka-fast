@@ -78,8 +78,6 @@
    Side effects: Send data to redis work-queue"
   [{:keys [metadata-connector work-queue redis-conn conf] :as state} w-unit]
   (try
-    (kafka-metadata/update-metadata! metadata-connector conf)
-
     ;we try to recalculate the broker, if any exception we reput the w-unit on the queue
     (let [sorted-wu (into (sorted-map) w-unit)
           broker (kafka-metadata/get-cached-metadata metadata-connector (:topic w-unit) (:partition w-unit))]
@@ -142,7 +140,7 @@
                   (work-complete-handler! state work-unit)
                   (redis/lrem redis-conn working-queue -1 (into (sorted-map) work-unit))))))
           (catch InterruptedException _ (info "Exit work complete loop"))
-          (catch Exception e (do (error e e) (.printStackTrace e)))))
+          (catch Exception e (error e))))
       (finally
         (.countDown shutdown-confirm)))))
 
@@ -202,7 +200,7 @@
          (s/validate schemas/PARTITION-OFFSET-DATA offset-datum)]}
   (try
     (assoc offset-datum :saved-offset (get-saved-offset state min-max-kafka-offsets topic (:partition offset-datum)))
-    (catch Throwable t (do (.printStackTrace t) (error t t) nil))))
+    (catch Throwable t (do (error t t) nil))))
 
 (defn max-value
   "Nil safe max function"
@@ -225,7 +223,11 @@
         ;note that this function will also write to redis
         (filter (fn [x] (and x (:saved-offset x) (:offset x) (< ^Long (:saved-offset x) ^Long (:offset x))))
                 (map #(do
-                        (add-offsets! state topic [(apply (fnil min 0) (:all-offsets %)) (:offset %)] %)) offset-data))
+                       (let [all-offsets (:all-offsets %)
+                             offset (:offset %)]
+                         (if (and (empty? all-offsets) (nil? offset))
+                           %
+                          (add-offsets! state topic [(apply (fnil min 0) all-offsets) offset] %)))) offset-data))
 
         consume-step2 (if consume-step consume-step (get conf :consume-step 100000))]
 
@@ -291,8 +293,9 @@
 
         (doseq [{:keys [partition all-offsets]} offset-data]
           (let [k {:topic topic :partition partition}
-                max-kafka-offset (apply (fnil max 0) all-offsets)
-                min-kafka-offset (apply (fnil min 0) all-offsets)]
+                empty-offsets (empty? all-offsets)
+                max-kafka-offset (if empty-offsets 0 (apply (fnil max 0) all-offsets))
+                min-kafka-offset (if empty-offsets 0 (apply (fnil min 0) all-offsets))]
 
             (.put m k (_max-offset (.get m k) [(saved-offset-f state
                                                                [min-kafka-offset max-kafka-offset]
@@ -317,15 +320,14 @@
   {:pre [metadata-connector conf stats-atom]}
   (try
 
-    (let [meta (kafka-metadata/update-metadata! metadata-connector conf)
+    (let [meta @(:metadata-ref metadata-connector)
 
           offsets (cutil/get-broker-offsets state meta topics conf)
-
           offset-send-f (fn [broker topic offset-data]
                           (try
                             ;we map :offset to max of :offset and :all-offets
                             (send-offsets-if-any! state broker topic (map #(assoc % :offset (apply max (:offset %) (:all-offsets %))) offset-data))
-                            (catch Exception e (do (error e e) (.printStackTrace e) (if error-handler (error-handler :meta state e))))))]
+                            (catch Exception e (do (error e e) (if error-handler (error-handler :meta state e))))))]
 
 
       ;; meta
@@ -354,7 +356,6 @@
 
       state)
     (catch Exception e (do
-                         (.printStackTrace e)
                          (error e e)
                          state))))
 

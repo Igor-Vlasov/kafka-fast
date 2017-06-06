@@ -1,10 +1,12 @@
 (ns kafka-clj.consumer.node
   (:import [java.net InetAddress]
-           (org.openjdk.jol.info GraphLayout))
+           (org.openjdk.jol.info GraphLayout)
+           (java.util.concurrent.atomic AtomicBoolean))
   (:require
     [kafka-clj.consumer.work-organiser :refer [create-organiser! close-organiser! calculate-new-work]]
     [kafka-clj.consumer.consumer :refer [consume! close-consumer! consumer-pool-stats]]
     [kafka-clj.redis.core :as redis]
+    [kafka-clj.consumer.util :as utils]
     [com.stuartsierra.component :as component]
     [fun-utils.core :refer [fixdelay-thread stop-fixdelay buffered-chan]]
     [clojure.tools.logging :refer [info error]]
@@ -17,18 +19,26 @@
   (try
     (apply f args)
     (catch Exception e (do
-                         (.printStackTrace e)
                          (error e e)))))
 
 (defn shutdown-node!
   "Closes the consumer node"
-  [{:keys [org consumer msg-ch calc-work-thread redis-conn] :as node}]
-  {:pre [org consumer msg-ch calc-work-thread redis-conn]}
-
-  (stop-fixdelay calc-work-thread)
+  [{:keys [org consumer msg-ch calc-work-thread-close calc-work-thread-join redis-conn shutdown-flag] :as node}]
+  {:pre [org consumer msg-ch calc-work-thread-close calc-work-thread-join redis-conn shutdown-flag]}
+  (info "Starting node component shutdown...")
+  (.set shutdown-flag true)
+  (info "Showdown flag is set")
+  (info "Sending calc-work-thread stop request...")
+  (stop-fixdelay calc-work-thread-close)
+  (info "Waiting for calc-work-thread to stop...")
+  (<!! calc-work-thread-join)
+  (info "Closing comsumer...")
   (safe-call close-consumer! consumer)
+  (info "Closing organizer...")
   (safe-call close-organiser! org :close-redis false)
+  (info "Closing redis pool...")
   (safe-call redis/close! redis-conn)
+  (info "Closing messages channel...")
   (safe-call close! msg-ch))
 
 (defn- work-calculate-delegate!
@@ -57,7 +67,7 @@
   [org topics & {:keys [freq] :or {freq 10000}}]
   {:pre [org topics]}
 
-  (fixdelay-thread
+  (utils/fixdelay-thread-ext
     freq
     (safe-call work-calculate-delegate! org @topics)))
 
@@ -121,7 +131,8 @@
                                                             work-unit-event-ch-buff-size 100}}]
   {:pre [conf topics (not-empty (:bootstrap-brokers conf)) (:redis-conf conf) (number? msg-ch-buff-size) (number? work-unit-event-ch-buff-size)]}
 
-  (let [host-name (.getHostName (InetAddress/getLocalHost))
+  (let [shutdown-flag (AtomicBoolean. false)
+        host-name (.getHostName (InetAddress/getLocalHost))
         topics-ref (ref (into #{} topics))
         group-name (get-in conf [:redis-conf :group-name] "default")
         working-queue-name (str group-name "-kafka-working-queue/" host-name)
@@ -147,7 +158,7 @@
                              :redis-conn redis-conn
                              :msg-ch msg-ch
                              :work-unit-event-ch work-unit-event-ch))
-        calc-work-thread (start-work-calculate (assoc org :redis-conn redis-conn
+        [calc-work-thread-close calc-work-thread-join] (start-work-calculate (assoc org :redis-conn redis-conn
                                                           :stats-atom stats-atom) topics-ref :freq (get conf :work-calculate-freq 10000))
         ]
 
@@ -155,11 +166,13 @@
     (copy-redis-queue redis-conn working-queue-name work-queue-name)
 
     {:conf               intermediate-conf
+     :shutdown-flag shutdown-flag
      :topics-ref topics-ref
      :org org :msg-ch msg-ch
      :consumer consumer
      :stats-atom stats-atom
-     :calc-work-thread calc-work-thread
+     :calc-work-thread-close calc-work-thread-close
+     :calc-work-thread-join calc-work-thread-join
      :group-name         group-name
      :redis-conn         redis-conn
      :work-unit-event-ch work-unit-event-ch}))

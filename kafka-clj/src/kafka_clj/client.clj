@@ -88,7 +88,6 @@
                                                                      10000)))
                                       30000)]
 
-    (info "create-topic-request resp " resp)
     (when-not (#{0 36} (:error_code resp))
       (throw (RuntimeException. (str "Failed to create topic " topic " response " resp))))))
 
@@ -126,10 +125,7 @@
           (do
             (kafka-metadata/update-metadata! metadata-connector (:conf state))
             (when (empty? (kafka-metadata/get-cached-metadata metadata-connector topic))
-              (try-create-topic connector topic)
-              (let [new-meta (kafka-metadata/update-metadata! metadata-connector (:conf state))]
-                (debug "New metadata after try-create-topic: " new-meta)))
-
+              (try-create-topic connector topic))
             (recur (inc retry))))))))
 
 (defn close
@@ -138,6 +134,7 @@
   [{{:keys [^AtomicBoolean shutdown-flag
             ^AtomicLong activity-counter
             metadata-connector
+            metadata-update-connector
             scheduled-service
             retry-cache]} :state
     msg-ch                :msg-ch
@@ -157,6 +154,8 @@
 
   (.shutdownNow ^ScheduledExecutorService scheduled-service)
   (kafka-metadata/close metadata-connector)
+  (kafka-metadata/close metadata-update-connector)
+
   ;(kafka-metadata/close send-connector)
 
   ;;before we close the retry-cache we need to close
@@ -360,6 +359,7 @@
   (let [^ScheduledExecutorService scheduled-service (Executors/newSingleThreadScheduledExecutor (daemon-thread-factory))
         async-ctx (fthreads/create-exec-service io-threads)
         metadata-connector (kafka-clj.metadata/connector bootstrap-brokers conf)
+        metadata-update-connector (kafka-clj.metadata/connector bootstrap-brokers conf)
 
         ;;TODO implement acks
 
@@ -380,6 +380,7 @@
 
         state {
                :metadata-connector metadata-connector
+               :metadata-update-connector metadata-update-connector
 
                :shutdown-flag      shutdown-flag
                :activity-counter   activity-counter
@@ -400,6 +401,7 @@
                    :retry-cache retry-cache
                    :flush-on-write flush-on-write
                    :metadata-connector metadata-connector
+                   :metadata-update-connector metadata-update-connector
                    ;:send-connector send-connector
                    :state state}
 
@@ -410,7 +412,7 @@
         connector2 (assoc connector :msg-ch msg-ch)
 
         _ (do "calling update-metadata!: " bootstrap-brokers " conf " conf)
-        update-metadata #(kafka-metadata/update-metadata! metadata-connector conf)
+        update-metadata #(when (not (.get (:closed metadata-update-connector))) (kafka-metadata/update-metadata! metadata-update-connector conf))
 
         persist-delay-thread (futils/fixdelay-thread 1000
                                                      (try
@@ -447,7 +449,7 @@
 
 
     (.scheduleWithFixedDelay scheduled-service ^Runnable (fn [] (try (update-metadata) (catch Exception e (do (error e e)
-                                                                                                              (async/>!! metadata-error-ch e))))) 0 10000 TimeUnit/MILLISECONDS)
+                                                                                                              (async/>!! metadata-error-ch e))))) 0 5000 TimeUnit/MILLISECONDS)
 
     (->
       connector2

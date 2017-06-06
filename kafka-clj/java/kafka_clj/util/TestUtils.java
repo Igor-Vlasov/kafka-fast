@@ -1,12 +1,15 @@
 package kafka_clj.util;
 
+import org.apache.commons.io.IOUtils;
+
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.ServerSocket;
 import java.util.Random;
 
-class TestUtils {
+public class TestUtils {
     private static final Random RANDOM = new Random();
 
     private TestUtils() {
@@ -45,5 +48,13 @@ class TestUtils {
             }
         }
         return ret && path.delete();
+    }
+
+    public static void dumpBinaryMessage(String prefixName, byte[] message) throws IOException {
+        File dumpFile = new File(prefixName + "_" + System.currentTimeMillis() + ".bin");
+        try(FileOutputStream dumpOS = new FileOutputStream(dumpFile))
+        {
+            IOUtils.write(message, dumpOS);
+        }
     }
 }

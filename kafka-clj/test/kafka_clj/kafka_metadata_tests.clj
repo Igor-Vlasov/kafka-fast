@@ -29,7 +29,7 @@
             (test-utils/create-topics resources topics 1 1))
 
         connector (kafka-meta/connector (test-utils/conf-brokers resources) {})
-        metadata (kafka-meta/get-metadata connector {})]
+        [metadata _] (kafka-meta/get-metadata connector {})]
 
     (kafka-meta/close connector)
     (and
