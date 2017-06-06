@@ -1,10 +1,19 @@
 package kafka_clj.util;
 
+import clojure.lang.IFn;
+import clojure.lang.IPersistentMap;
+import clojure.lang.Keyword;
+import clojure.lang.PersistentHashMap;
 import com.alexkasko.unsafe.offheap.OffHeapMemory;
 import io.netty.buffer.ByteBuf;
 import net.jpountz.lz4.LZ4BlockInputStream;
 import net.jpountz.lz4.LZ4BlockOutputStream;
 import org.apache.commons.io.IOUtils;
+import org.apache.kafka.common.Node;
+import org.apache.kafka.common.TopicPartition;
+import org.apache.kafka.common.protocol.Errors;
+import org.apache.kafka.common.requests.ListOffsetResponse;
+import org.apache.kafka.common.requests.MetadataResponse;
 import org.xerial.snappy.Snappy;
 import org.xerial.snappy.SnappyInputStream;
 
@@ -14,6 +23,7 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.nio.ByteBuffer;
+import java.util.*;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPInputStream;
 
@@ -223,4 +233,104 @@ public class Util {
            throw rte;
        }
     }
+
+    private static Comparator<IPersistentMap> PARTITIONS_META_COMP = new Comparator<IPersistentMap>() {
+        @Override
+        public int compare(IPersistentMap o1, IPersistentMap o2) {
+            int p1 = (Integer)o1.valAt(Keyword.intern("id"));
+            int p2 = (Integer)o2.valAt(Keyword.intern("id"));
+            return p1 > p2 ? 1 : (p1 < p2 ? -1 : 0 );
+        }
+    };
+
+    private static Set<Errors> PARTITION_ERRORS_TO_IGNORE = new HashSet<>();
+    static{
+        PARTITION_ERRORS_TO_IGNORE.add(Errors.REPLICA_NOT_AVAILABLE); // comes in case of only one replica down, this should not stop consumption
+    }
+
+    public static IPersistentMap getMetaByTopicPartition(MetadataResponse metadata, IFn acceptTopic, IFn acceptPartition, Set<IPersistentMap> hosts)
+    {
+        Map<String, List<IPersistentMap>> result = new HashMap<>();
+
+        for(MetadataResponse.TopicMetadata topicMeta : metadata.topicMetadata())
+        {
+            if(Boolean.TRUE.equals(acceptTopic.invoke(topicMeta)))
+            {
+                List<IPersistentMap> partitionMetas = new ArrayList<>();
+                for(MetadataResponse.PartitionMetadata partitionMeta : topicMeta.partitionMetadata())
+                {
+                    if(Boolean.TRUE.equals(acceptPartition.invoke(topicMeta, partitionMeta)))
+                    {
+                        Map<Keyword, Object> metaInfo = new HashMap<>();
+                        Node leader = partitionMeta.leader();
+                        List<IPersistentMap> nodes = new ArrayList<>();
+                        for(Node isrNode : partitionMeta.isr())
+                        {
+                            Map<Keyword, Object> isrNodeMap = new HashMap<>();
+                            isrNodeMap.put(Keyword.intern("host"), isrNode.host());
+                            isrNodeMap.put(Keyword.intern("port"), isrNode.port());
+                            nodes.add(PersistentHashMap.create(isrNodeMap));
+                            hosts.add(PersistentHashMap.create(isrNodeMap));
+                        }
+
+                        metaInfo.put(Keyword.intern("host"), leader.host());
+                        metaInfo.put(Keyword.intern("port"), leader.port());
+
+                        hosts.add(PersistentHashMap.create(metaInfo));
+
+                        metaInfo.put(Keyword.intern("isr"), nodes);
+                        metaInfo.put(Keyword.intern("id"), partitionMeta.partition());
+                        if(PARTITION_ERRORS_TO_IGNORE.contains(partitionMeta.error()))
+                            metaInfo.put(Keyword.intern("error-code"), Errors.NONE.code());
+                        else
+                            metaInfo.put(Keyword.intern("error-code"), partitionMeta.error().code());
+
+                        partitionMetas.add(PersistentHashMap.create(metaInfo));
+                    }
+                }
+                Collections.sort(partitionMetas, PARTITIONS_META_COMP);
+                result.put(topicMeta.topic(), partitionMetas);
+            }
+        }
+
+        return PersistentHashMap.create(result);
+    }
+
+    public static IPersistentMap getPartitionOffsetsByTopic(ListOffsetResponse offsetsResp, String topic, boolean useEarliest, IFn acceptPartitionData) throws Exception {
+        List<IPersistentMap> records = new ArrayList<>();
+
+        for(Map.Entry<TopicPartition, ListOffsetResponse.PartitionData> respDataEntry : offsetsResp.responseData().entrySet())
+        {
+            TopicPartition topicPartition = respDataEntry.getKey();
+
+            if(topic.equals(topicPartition.topic()))
+            {
+                ListOffsetResponse.PartitionData partitionData = respDataEntry.getValue();
+                if(Boolean.TRUE.equals(acceptPartitionData.invoke(topicPartition, partitionData)))
+                {
+                    Map<Keyword, Object> offsetRecord = new HashMap<>();
+                    List<Long> offsets = partitionData.offsets;
+                    Collections.sort(offsets);
+                    offsetRecord.put(Keyword.intern("offset"),
+                            useEarliest?offsets.get(0):offsets.get(offsets.size()-1));
+                    offsetRecord.put(Keyword.intern("all-offsets"), offsets);
+                    offsetRecord.put(Keyword.intern("error-code"), partitionData.errorCode);
+                    offsetRecord.put(Keyword.intern("locked"), false);
+                    offsetRecord.put(Keyword.intern("partition"), topicPartition.partition());
+
+                    records.add(PersistentHashMap.create(offsetRecord));
+                }
+            }
+        }
+
+        Map<String, List<IPersistentMap>> result = new HashMap<>();
+        result.put(topic, records);
+        return PersistentHashMap.create(result);
+    }
+
+    public static String errorToString(Errors error)
+    {
+        return "Code: " + error.code() + " [" + error.name() + "]: " + error.message();
+    }
+
 }

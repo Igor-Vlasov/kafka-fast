@@ -19,10 +19,18 @@
     [schema.core :as s])
   (:import
     (io.netty.buffer Unpooled ByteBuf)
-    (kafka_clj.util Util)))
+    (kafka_clj.util Util TestUtils)
+    (java.util.concurrent.atomic AtomicBoolean)
+    (java.nio ByteBuffer)
+    (org.apache.kafka.common.requests MetadataResponse MetadataResponse$TopicMetadata MetadataResponse$PartitionMetadata RequestHeader)
+    (org.apache.kafka.clients NetworkClient)
+    (org.apache.kafka.common.protocol Errors)
+    (java.util HashSet Set ArrayList Collections List)))
 
 ;;validates metadata responses like {"abc" [{:host "localhost", :port 50738, :isr [{:host "localhost", :port 50738}], :id 0, :error-code 0}]}
 (def META-RESP-SCHEMA {s/Str [{:host s/Str, :port s/Int, :isr [{:host s/Str, :port s/Int}], :id s/Int, :error-code s/Int}]})
+
+(defonce ^List connectors (Collections/synchronizedList (ArrayList.)))
 
 (defn- convert-metadata-response
   "
@@ -83,6 +91,7 @@
       (write-short-string client-id)                        ;short + client-id bytes
       (.writeInt (int 0))))                                 ;write empty topic, dont use -1 (this means nil), list to receive metadata on all topics
 
+(defonce ^AtomicBoolean sucessParse (AtomicBoolean. false))
 
 (defn send-recv-metadata-request
   "Writes out a metadata request to the producer con"
@@ -100,28 +109,38 @@
 
         resp-len (driver-io/read-int conn timeout)
 
-        resp-buff (Unpooled/wrappedBuffer
+        resp-buff (ByteBuffer/wrap
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
-        resp (kafka-resp/read-metadata-response ^ByteBuf resp-buff)
+        metadata (try
+                   (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
+                                                                   (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
+                                                                                   (short protocol/API_VERSION)
+                                                                                   (get conf :client-id "1")
+                                                                                   (get conf :correlation-id 1))))
+                   (catch Exception exc (do
+                                          (error exc))))]
+        (if metadata
+          (let [accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
+                               (let [^Errors error-obj (.error topicMeta)
+                                     error-code (.code error-obj)]
+                                 (if (zero? error-code)
+                                   (not (.isInternal topicMeta))
+                                   (error "Encountered topic error during metadata refresh, topic: "
+                                          (.topic topicMeta) ", error: " (Util/errorToString error-obj) ", topic metadata discarded"))))
 
-        converted-resp (convert-metadata-response
-                         resp)
-
-        check-host-meta (fn [topic {:keys [host error-code] :as host-meta}]
-                          (if (and host
-                                   (number? error-code)
-                                   (zero? error-code))
-                            host-meta
-                            (let [error-msg  (str "Excluding broken host metadata for " topic " => " host-meta)]
-                              (error error-msg)
-                              nil)))]
-
-        ;;The aim is to exclude any nil host entries or erorr_code > 0, an error message is printed on exclude
-        (reduce-kv (fn [state log hosts-meta]
-                     (assoc state log (filterv (partial check-host-meta log) hosts-meta)))
-                   {}
-                   converted-resp)))
+                accept-partition (fn [^MetadataResponse$TopicMetadata topicMeta ^MetadataResponse$PartitionMetadata partitionMeta]
+                                   (let [^Errors error-obj (.error partitionMeta)
+                                         error-code (.code error-obj)
+                                         _ (when (not (zero? error-code)) (warn "Encountered partition error during metadata refresh, topic: "
+                                                                                (.topic topicMeta) ", partition: " (.partition partitionMeta)
+                                                                                ", error: " (Util/errorToString error-obj)))
+                                         leader (.leader partitionMeta)]
+                                     (and (not (nil? leader)) (not (empty? (.isr partitionMeta))))))
+                hosts (HashSet.)
+                converted-filtered-meta (Util/getMetaByTopicPartition metadata accept-topic accept-partition hosts)]
+            [converted-filtered-meta hosts])
+          [nil nil])))
 
   (defn safe-nth [coll i]
     (let [v (vec coll)]
@@ -144,18 +163,6 @@
      (let [metadata @(:metadata-ref metadata-connector)]
 
        (get metadata topic))))
-
-(defn get-cached-brokers
-  "Return the current registered brokers in the metadata cache"
-  ([metadata-connector]
-   @(:brokers-ref metadata-connector))
-
-  ([metadata-connector topic]
-   {:pre [metadata-connector (string? topic)]}
-
-   (let [metadata @(:metadata-ref metadata-connector)]
-
-     (get metadata topic))))
 
   (defn get-metadata
     "
@@ -182,42 +189,31 @@
   "Updates the borkers-ref, metadata-ref and add/remove hosts as per the metadata from the driver
         if meta is nil, any updates are skipped
    "
-  [{:keys [brokers-ref metadata-ref] :as connector} conf]
+  [{:keys [closed bootstrap-brokers brokers-ref metadata-ref] :as meta-connector} conf]
+  (when (not (.get closed))
+    (let [[meta ^Set hosts] (get-metadata meta-connector conf)]
+      (when (not (nil? meta))
+        (let [hosts-set (if (.isEmpty hosts) (set bootstrap-brokers) (set hosts))
+              hosts-remove (clojure.set/difference @brokers-ref hosts-set)
+              hosts-add (clojure.set/difference hosts-set @brokers-ref)]
 
-    (when-let [meta (get-metadata connector conf)]
+          (doseq [connector connectors]
+            (doseq [host hosts-add]
+              (do (info "Adding host " host " to driver " (:driver connector))
+                  (tcp-driver/add-host (:driver connector) host)))
+            ;; to remove all brockers we need to get empty hosts metadata,
+            ;; but if we get empty hosts metadata we will use bootstrap-brokers set
+            (doseq [host hosts-remove]
+              (do (info "Removing host " host " from driver " (:driver connector))
+                  (tcp-driver/remove-host (:driver connector) host)))
 
+            (dosync
+              (commute
+                (:brokers-ref connector) (constantly hosts-set))
+              (commute
+                (:metadata-ref connector) (constantly meta))))
 
-      (let [select-host #(select-keys % [:host :port])
-
-            hosts (->>                                      ;;extract the host and isr hosts into a set from the meta data
-                    meta
-                    vals
-                    flatten
-                    (mapcat #(conj (map select-host (:isr %))
-                                   (select-host %)))
-
-                    (filter #(every? (complement nil?) (vals %)))
-
-                    (into #{}))
-
-            hosts-remove (clojure.set/difference @brokers-ref hosts)
-            hosts-add (clojure.set/difference hosts @brokers-ref)]
-
-        (doseq [host hosts-add]
-          (tcp-driver/add-host (:driver connector) host))
-
-        ;;TODO we cannot use remove if it means having no more hosts
-        ;; solution would be to remove only non bootstrap broker nodes
-        ;(doseq [host hosts-remove]
-        ;  (tcp-driver/remove-host (:driver connector) host))
-
-        (dosync
-          (commute
-            brokers-ref #(into #{} (concat hosts %)))
-          (commute
-            metadata-ref (constantly meta)))
-
-        meta)))
+          meta)))))
 
   (defn blacklisted? [{:keys [driver] :as st} host-address]
     {:pre [driver (:host host-address) (:port host-address)]}
@@ -227,13 +223,18 @@
     "Creates a tcp pool and initiate for all brokers"
   [bootstrap-brokers conf]
   (let [driver (tcp/driver bootstrap-brokers :retry-limit (get conf :retry-limit 3) :pool-conf conf)
-        brokers (into #{} bootstrap-brokers)]
+        brokers (into #{} bootstrap-brokers)
+        result {:conf         conf
+                :driver       driver
+                :metadata-ref (ref nil)
+                :bootstrap-brokers bootstrap-brokers
+                :brokers-ref  (ref brokers)
+                :closed       (AtomicBoolean. false)}
+        _ (.add connectors result)]
 
-    {:conf conf
-     :driver driver
-     :metadata-ref (ref nil)
-     :brokers-ref (ref brokers)}))
+    result))
 
-(defn close [{:keys [driver]}]
-  {:pre [driver]}
+(defn close [{:keys [driver closed]}]
+  {:pre [driver closed]}
+  (.set closed true)
   (tcp-driver/close driver))

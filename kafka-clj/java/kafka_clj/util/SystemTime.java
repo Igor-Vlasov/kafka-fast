@@ -11,7 +11,6 @@ class SystemTime implements Time {
         return System.nanoTime();
     }
 
-    @Override
     public long hiResClockMs() {
         return 0;
     }

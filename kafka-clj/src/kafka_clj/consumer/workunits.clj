@@ -40,7 +40,6 @@
   (publish-work-response! state wu wu status {:offset-read offset-read}))
 
 (defn publish-zero-consumed-wu! [state wu]
-  (warn "zero offsets consumed for " wu)
   (publish-work-response! state wu wu :ok {:offset-read 0}))
 
 (defn publish-error-consumed-wu! [state wu]

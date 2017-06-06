@@ -14,10 +14,14 @@
             [tcp-driver.io.stream :as tcp-stream]
             [schema.core :as s]
             [tcp-driver.driver :as tcp-driver]
-            [kafka-clj.schemas :as schemas])
+            [kafka-clj.schemas :as schemas]
+            [kafka-clj.protocol :as protocol])
   (:import [io.netty.buffer ByteBuf Unpooled]
            [java.util.concurrent.atomic AtomicInteger]
-           (kafka_clj.util Util)))
+           (kafka_clj.util Util)
+           (java.nio ByteBuffer)
+           (org.apache.kafka.common.requests RequestHeader ListOffsetResponse)
+           (org.apache.kafka.clients NetworkClient)))
 
 
 (defn ^ByteBuf write-fecth-request-message
@@ -183,10 +187,10 @@
   ;;[["1487196829664" ({:partition 0})]]
 
   "topics must have format [[topic [{:partition 0} {:partition 1}...]] ... ]"
-  (let [timeout (get (:conf metadata-connector) :fetch-tcp-timeout 10000)
+  (let [conf (:conf metadata-connector)
+        timeout (get conf :fetch-tcp-timeout 10000)
         ^ByteBuf buff (Unpooled/buffer)
-        _ (do (with-size buff write-offset-request (merge (:conf metadata-connector) {:topics topics})))
-
+        _ (do (with-size buff write-offset-request (merge conf {:topics topics})))
         resp-bts (tcp-driver/send-f (:driver metadata-connector)
                                     host-address
                                     (fn [conn]
@@ -201,8 +205,11 @@
                                                          timeout)]
                                           resp-bts)))
                                     timeout)
-
-        kafka-resp (_read-offset-response (Unpooled/wrappedBuffer ^"[B" resp-bts))]
+        kafka-resp (ListOffsetResponse. (NetworkClient/parseResponse ^ByteBuffer (ByteBuffer/wrap ^"[B" resp-bts)
+                                                                     (RequestHeader. (short protocol/API_KEY_OFFSET_REQUEST)
+                                                                          (short protocol/API_VERSION)
+                                                                          (get conf :client-id "1")
+                                                                          (get conf :correlation-id 1))))]
 
     (debug "send-recv-offset-request kafka-resp " kafka-resp)
     kafka-resp))
