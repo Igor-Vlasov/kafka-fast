@@ -214,7 +214,7 @@
 
     (try
       (if (.tryLock lock wait-ms timeout-ms TimeUnit/MILLISECONDS) lock)
-      (catch Exception e (error e e)))))
+      (catch Exception e (error e "")))))
 
 (defn release-lock [^RedissonClient cmd ^String lock-name ^RLock lock]
   (when lock

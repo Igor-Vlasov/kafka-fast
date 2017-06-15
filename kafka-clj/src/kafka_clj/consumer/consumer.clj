@@ -132,18 +132,16 @@
                               (threads/submit exec-service (fn []
                                                              (try
                                                                (handler-f wu)
-                                                               (catch Exception e (error e e)))))))
+                                                               (catch Exception e (error e "")))))))
                           (catch InterruptedException ie (do
                                                            (.printStackTrace ie)
                                                            (.interrupt (Thread/currentThread))))
                           (catch IllegalStateException e
-                            (.printStackTrace e)
-                            (error e e)
+                            (error e "")
                             (.interrupt (Thread/currentThread)))
                           (catch InterruptedException _ nil)
                           (catch Exception e (do
-                                               (.printStackTrace e)
-                                               (error e e)))))
+                                               (error e "")))))
                       (info "EXIT publisher loop!!")))))
 
 (defn- handle-msg-event
@@ -215,7 +213,7 @@
           (wu-api/publish-error-wu! state wu status offset)
           nil)))
     (catch Throwable ne (do
-                          (error ne ne)
+                          (error ne "")
                           (wu-api/publish-zero-consumed-wu! state wu)
                           nil))))
 
@@ -316,8 +314,7 @@
           (when update-f
             (swap! max-bytes-at #(update-in % [topic partition] (with-default update-f DEFAULT-MAX-BTS-REM)))))))
     (catch Exception e (do
-                         (.printStackTrace e)
-                         (error e e)))))
+                         (error e "")))))
 
 ;;;;;;;;;;;;;;;;
 ;;;;;;;; Public Functions

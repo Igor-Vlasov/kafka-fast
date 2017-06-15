@@ -19,7 +19,7 @@
   (try
     (apply f args)
     (catch Exception e (do
-                         (error e e)))))
+                         (error e "")))))
 
 (defn shutdown-node!
   "Closes the consumer node"
@@ -55,7 +55,7 @@
         lock-timeout
         1000
         (calculate-new-work node topics))
-      (catch Exception e (error e e)))))
+      (catch Exception e (error e "")))))
 
 (defn- start-work-calculate
   "Returns a channel that will run in a fixed delay of 1000ms

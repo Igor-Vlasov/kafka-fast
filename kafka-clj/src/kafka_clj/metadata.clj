@@ -119,7 +119,7 @@
                                                                                    (get conf :client-id "1")
                                                                                    (get conf :correlation-id 1))))
                    (catch Exception exc (do
-                                          (error exc))))]
+                                          (error exc ""))))]
         (if metadata
           (let [accept-topic (fn [^MetadataResponse$TopicMetadata topicMeta]
                                (let [^Errors error-obj (.error topicMeta)
@@ -179,7 +179,7 @@
                                                                    (warn "Error in reading medata from producer " (dissoc conn :error) " error: " ie)
                                                                    nil))
                              (catch Exception e (do
-                                                  (error "Error retreiving metadata " e)
+                                                  (error e "Error retreiving metadata ")
                                                   (throw e))))))
                        10000))
 

@@ -120,7 +120,7 @@
     (when (and v (pool-obj-val v))
       (validate-f ctx v))
     (catch Exception e (do
-                         (error e e)
+                         (error e "")
                          nil))))
 (defn a-poll-valid
   "Poll for a valid object, invalid objects are destroyed, this process is repeated till a valid object is found
@@ -177,7 +177,7 @@
   (doseq [obj objs]
     (try
       (a-destroy pool @obj)
-      (catch Exception e (error e e))))
+      (catch Exception e (error e ""))))
   ;;must return nil to allow gc on destroyed objects
   nil)
 

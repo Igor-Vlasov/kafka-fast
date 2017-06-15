@@ -84,7 +84,7 @@
       (redis/lpush redis-conn work-queue (assoc sorted-wu :producer broker))
       state)
     (catch Exception e (do
-                         (error e e)
+                         (error e "")
                          (redis/lpush redis-conn work-queue (into (sorted-map) w-unit))))))
 
 (defn- work-complete-ok!
@@ -140,7 +140,7 @@
                   (work-complete-handler! state work-unit)
                   (redis/lrem redis-conn working-queue -1 (into (sorted-map) work-unit))))))
           (catch InterruptedException _ (info "Exit work complete loop"))
-          (catch Exception e (error e))))
+          (catch Exception e (error e ""))))
       (finally
         (.countDown shutdown-confirm)))))
 
@@ -200,7 +200,7 @@
          (s/validate schemas/PARTITION-OFFSET-DATA offset-datum)]}
   (try
     (assoc offset-datum :saved-offset (get-saved-offset state min-max-kafka-offsets topic (:partition offset-datum)))
-    (catch Throwable t (do (error t t) nil))))
+    (catch Throwable t (do (error t "") nil))))
 
 (defn max-value
   "Nil safe max function"
@@ -327,7 +327,7 @@
                           (try
                             ;we map :offset to max of :offset and :all-offets
                             (send-offsets-if-any! state broker topic (map #(assoc % :offset (apply max (:offset %) (:all-offsets %))) offset-data))
-                            (catch Exception e (do (error e e) (if error-handler (error-handler :meta state e))))))]
+                            (catch Exception e (do (error e "") (if error-handler (error-handler :meta state e))))))]
 
 
       ;; meta
@@ -356,7 +356,7 @@
 
       state)
     (catch Exception e (do
-                         (error e e)
+                         (error e "")
                          state))))
 
 (defn create-organiser!
@@ -391,7 +391,7 @@
     (when (nil? meta)
       (try
         (close-organiser! state)
-        (catch Exception e (error e e)))
+        (catch Exception e (error e "")))
       (throw (ex-info (str "No metadata could be found from any of the bootstrap brokers provided " bootstrap-brokers) {:type :metadata-exception
                                                                                                                         :bootstrap-brokers bootstrap-brokers})))
     state))

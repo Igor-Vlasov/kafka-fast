@@ -169,7 +169,7 @@
         check-idle-f #(try
                        (-keyed-pool-remove-ttl! managed-pool ttl-ms)
                        (-keyed-pool-remove-idle! managed-pool idle-limit-ms)
-                       (catch Exception e (error e e)))]
+                       (catch Exception e (error e "")))]
 
     (schedule exec-service
               (get ctx :idle-check-freq-ms 60000)

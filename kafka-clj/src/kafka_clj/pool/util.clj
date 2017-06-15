@@ -18,7 +18,7 @@
 (defn call-safely [f & args]
   (try
     (apply f args)
-    (catch Exception e (error e e))))
+    (catch Exception e (error e ""))))
 
 (defn timeout?
   "True if the diff between now and start-ts is more than timeout-ms"
