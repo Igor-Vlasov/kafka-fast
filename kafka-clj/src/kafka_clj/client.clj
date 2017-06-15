@@ -66,7 +66,7 @@
       (no-error-status (:error-code node-data)))
       (not (kafka-metadata/blacklisted? metadata-connector (select-keys node-data [:host :port])))
     (catch Exception e (do
-                         (error (str "Error while querying keys " (keys state) " data " node-data) e)
+                         (error e (str "Error while querying keys " (keys state) " data " node-data))
                          false))))
 
 (defn create-topic-request
@@ -231,7 +231,7 @@
           bts (tcp-stream/read-bytes conn len 10000)
           resp (kafka-resp/in->kafkarespseq (DataInputStream. (ByteArrayInputStream. ^"[B" bts)))]
       (kafka-response state send-cache resp))
-    (catch Exception e (error (str "Error while waiting for ack response from " conn) e))))
+    (catch Exception e (error e (str "Error while waiting for ack response from " conn)))))
 
 ;this is only used with the single message producer api where ack > 0
 (def global-message-ack-cache (delay (kafka-clj.msg-persist/create-send-cache {})))
@@ -301,8 +301,7 @@
       (do
         (error-no-partition state topic msgs)))
     (catch Exception e (do
-                         (.printStackTrace e)
-                         (error e e)
+                         (error e "")
                          (clojure.core.async/>!! (:producer-error-ch state) (->ErrorCtx :error topic msgs))))))
 
 
@@ -428,10 +427,10 @@
                                                              (persist/delete-from-retry-cache connector (:key-val retry-msg)))))
                                                        (catch NullPointerException npe
                                                          (when-not (persist/closed? connector)
-                                                           (error npe npe)))
+                                                           (error npe "")))
                                                        (catch Exception e
                                                          (when-not (.get shutdown-flag)
-                                                           (error e e)))))
+                                                           (error e "")))))
 
         ]
 
@@ -448,7 +447,7 @@
                    async-latch)
 
 
-    (.scheduleWithFixedDelay scheduled-service ^Runnable (fn [] (try (update-metadata) (catch Exception e (do (error e e)
+    (.scheduleWithFixedDelay scheduled-service ^Runnable (fn [] (try (update-metadata) (catch Exception e (do (error e "")
                                                                                                               (async/>!! metadata-error-ch e))))) 0 5000 TimeUnit/MILLISECONDS)
 
     (->
@@ -469,7 +468,7 @@
     (if (:client component)
       (try
         (close (:client component))
-        (catch Exception e (error e e))
+        (catch Exception e (error e ""))
         (finally (dissoc component :client)))
       component)))
 

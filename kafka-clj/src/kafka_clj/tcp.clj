@@ -119,7 +119,7 @@
     (catch Exception e
       (do
         (.printStackTrace e)
-        (error (str "Ignored Exception " e) e)
+        (error e (str "Ignored Exception " e))
         nil))))
 
 (defn close! [{:keys [^Socket socket ^InputStream input ^OutputStream output sasl-ctx]}]
@@ -133,7 +133,7 @@
       (when sasl-ctx
         (.dispose ^SaslClient (:sasl-client sasl-ctx))))
     (catch Throwable t
-      (error (str "Ignored exception " t) t))))
+      (error t (str "Ignored exception " t)))))
 
 (defn- _write-bytes [tcp-client ^"[B" bts]
   (.write ^BufferedOutputStream (:output tcp-client) bts))

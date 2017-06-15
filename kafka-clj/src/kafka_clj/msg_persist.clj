@@ -78,7 +78,7 @@
                 .closeOnJvmShutdown
                 .transactionEnable
                 .make)
-       map (-> db (.treeMap "kafka-retry-cache"))]
+       map (.create (-> db (.treeMap "kafka-retry-cache")))]
       {:db db :file file :cache map}))
 
 (defn create-retry-cache [{:keys [retry-cache-file] :or {retry-cache-file (str (tmp-dir) "/kafka-retry-cache")} :as conf}]
