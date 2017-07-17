@@ -1,4 +1,4 @@
-(defproject kafka-clj "4.0.5.r1"
+(defproject kafka-clj "4.0.6.r1-SNAPSHOT"
   :description "fast kafka library implemented in clojure"
   :url "https://github.com/gerritjvv/kafka-fast"
   :license {:name "Eclipse Public License"
@@ -84,7 +84,7 @@
 
                  [org.openjdk.jol/jol-core "0.5"]
 
-                 [org.apache.kafka/kafka-clients "0.10.0.1"]
+                 [org.apache.kafka/kafka-clients "0.10.2.1"]
 
                  [org.clojure/clojure "1.8.0" :scope "provided"]
 
@@ -98,7 +98,7 @@
 
                  [org.apache.zookeeper/zookeeper "3.4.8" :scope "test"
                   :exclusions [io.netty/netty]]
-                 [org.apache.kafka/kafka_2.10 "0.10.0.1" :scope "test"
+                 [org.apache.kafka/kafka_2.10 "0.10.2.1" :scope "test"
                   :exclusions [io.netty/netty
                                log4j
                                org.slf4j/slf4j-api
