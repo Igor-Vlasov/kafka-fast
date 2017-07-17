@@ -205,11 +205,11 @@
                                                          timeout)]
                                           resp-bts)))
                                     timeout)
-        kafka-resp (ListOffsetResponse. (NetworkClient/parseResponse ^ByteBuffer (ByteBuffer/wrap ^"[B" resp-bts)
+        kafka-resp (NetworkClient/parseResponse ^ByteBuffer (ByteBuffer/wrap ^"[B" resp-bts)
                                                                      (RequestHeader. (short protocol/API_KEY_OFFSET_REQUEST)
                                                                           (short protocol/API_VERSION)
                                                                           (get conf :client-id "1")
-                                                                          (get conf :correlation-id 1))))]
+                                                                          (get conf :correlation-id 1)))]
 
     (debug "send-recv-offset-request kafka-resp " kafka-resp)
     kafka-resp))

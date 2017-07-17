@@ -113,11 +113,11 @@
                     ^"[B" (driver-io/read-bytes conn resp-len timeout))
 
         metadata (try
-                   (MetadataResponse. (NetworkClient/parseResponse ^ByteBuffer resp-buff
+                   (NetworkClient/parseResponse ^ByteBuffer resp-buff
                                                                    (RequestHeader. (short protocol/API_KEY_METADATA_REQUEST)
                                                                                    (short protocol/API_VERSION)
                                                                                    (get conf :client-id "1")
-                                                                                   (get conf :correlation-id 1))))
+                                                                                   (get conf :correlation-id 1)))
                    (catch Exception exc (do
                                           (error exc ""))))]
         (if metadata
