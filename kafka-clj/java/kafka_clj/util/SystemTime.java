@@ -1,6 +1,6 @@
 package kafka_clj.util;
 
-import kafka.utils.Time;
+import org.apache.kafka.common.utils.Time;
 
 class SystemTime implements Time {
     public long milliseconds() {
