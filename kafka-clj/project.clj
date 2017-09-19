@@ -53,7 +53,7 @@
   :test-paths ["test" "test-java"]
 
   :dependencies [
-                 [tcp-driver "0.1.4-r1-SNAPSHOT"]
+                 [tcp-driver "0.1.4-r1"]
 
                  [com.taoensso/carmine "2.15.0" :exclusions [org.clojure/clojure]]
                  [org.redisson/redisson "3.2.2" :exclusions [io.netty/netty-buffer]]
