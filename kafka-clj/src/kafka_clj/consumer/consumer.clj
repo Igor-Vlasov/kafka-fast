@@ -329,13 +329,12 @@
         .build
         (.start 10 TimeUnit/SECONDS))))
 
-(defn update-work-unit-thread-stats!
-  "Update the map work-unit-thread-stats with key=<thread-name> value={:ts <timestamp> wu: <work-unit> :duration <ts-ms>}"
-  [^Map work-unit-thread-stats start-ts end-ts wu]
-  (.put work-unit-thread-stats (.getName (Thread/currentThread)) {:ts       start-ts
-                                                                  :duration (- (long end-ts) (long start-ts))
-                                                                  :wu       wu})
-  work-unit-thread-stats)
+(defn update-work-unit-stats!
+  "Update the map work-unit-stats"
+  [^Map work-unit-stats wu]
+  (.put work-unit-stats (str (:topic wu) ":" (:partition wu))
+        {"ts" (:ts wu) "status" (:status wu) "max-offset" (:max-offset wu) "offset" (:offset wu)} )
+  work-unit-stats)
 
 (defn consume!
   "Starts the consumer consumption process, by initiating redis-fetch-threads(default 1)+consumer-threads threads, one thread is used to wait for work-units
@@ -365,7 +364,7 @@
   (io!
     (let [
           ;;shows last work-unit processed by a consumer thread key=<thread-name> value=<work-unit>
-          work-unit-thread-stats (ConcurrentHashMap.)
+          work-unit-stats (ConcurrentHashMap.)
 
           redis-fetch-threads (get conf :redis-fetch-threads 1)
           consumer-threads (get conf :consumer-threads 2)
@@ -389,7 +388,7 @@
                                v (auto-tune-fetch max-bytes-at state metadata-connector delegate-f wu)]
 
                            ;;update stats!
-                           (update-work-unit-thread-stats! work-unit-thread-stats start-ts (System/currentTimeMillis) wu)
+                           (update-work-unit-stats! work-unit-stats wu)
 
                            ;;return auto-tune-fetch result
                            v))]
@@ -403,22 +402,22 @@
         :exec-service exec-service
         :metadata-connector metadata-connector
         :shutdown-flag shutdown-flag
-        :work-unit-thread-stats work-unit-thread-stats))))
+        :work-unit-stats work-unit-stats))))
 
 
-(defn show-work-unit-thread-stats
+(defn show-work-unit-stats
   "
   public function
   Return the work-unit-thread-stats that show key=thread value={:ts <the time the wu was seen> :duration <time it took for fetch> :wu <work-unit>}"
-  [{:keys [work-unit-thread-stats]}]
-  work-unit-thread-stats)
+  [{:keys [work-unit-stats]}]
+  work-unit-stats)
 
 (defn consumer-pool-stats
   "Return a stats map for instances returned from the consume! function"
   [{:keys [^ExecutorService exec-service] :as conn}]
   {:exec-service (thread-pool-stats exec-service)
 
-   :fetch-stats  (show-work-unit-thread-stats conn)})
+   :fetch-stats  (show-work-unit-stats conn)})
 
 (defn close-consumer! [{:keys [publish-exec-service exec-service metadata-connector ^AtomicBoolean shutdown-flag]}]
   (.set shutdown-flag true)
