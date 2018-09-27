@@ -96,7 +96,7 @@
 (defn send-recv-metadata-request
   "Writes out a metadata request to the producer con"
   [conn conf]
-  (let [timeout 30000
+  (let [timeout 60000
 
         ^ByteBuf buff (Unpooled/buffer)
         _ (with-size buff write-metadata-request conf)
