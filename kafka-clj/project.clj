@@ -1,4 +1,4 @@
-(defproject kafka-clj "4.0.9.r1"
+(defproject kafka-clj "4.0.10.r1"
   :description "fast kafka library implemented in clojure"
   :url "https://github.com/gerritjvv/kafka-fast"
   :license {:name "Eclipse Public License"
@@ -74,6 +74,8 @@
 
                  [io.netty/netty-buffer "4.1.6.Final"]
                  [io.netty/netty-common "4.1.6.Final"]
+
+                 [org.apache.commons/commons-lang3 "3.4"]
 
                  [com.codahale.metrics/metrics-core "3.0.2"]
 

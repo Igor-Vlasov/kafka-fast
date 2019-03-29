@@ -14,14 +14,15 @@
             [tcp-driver.driver :as tcp-driver]
             [tcp-driver.io.stream :as tcp-stream]
             [schema.core :as s])
-  (:import (java.util.concurrent TimeUnit ExecutorService ThreadPoolExecutor ConcurrentHashMap)
-           (kafka_clj.util FetchState Fetch Fetch$Message Fetch$FetchError Util)
+  (:import (java.util.concurrent TimeUnit ExecutorService ThreadPoolExecutor ConcurrentHashMap ArrayBlockingQueue ThreadPoolExecutor$AbortPolicy RejectedExecutionException)
+           (kafka_clj.util FetchState Fetch Fetch$Message Fetch$FetchError Util BlockingOfferQueue)
            (clojure.core.async.impl.channels ManyToManyChannel)
            (java.net SocketException)
            (java.util.concurrent.atomic AtomicBoolean)
            (com.codahale.metrics MetricRegistry Meter ConsoleReporter)
            (java.util Map)
-           (io.netty.buffer ByteBuf Unpooled)))
+           (io.netty.buffer ByteBuf Unpooled)
+           (org.apache.commons.lang3.concurrent BasicThreadFactory BasicThreadFactory$Builder)))
 
 ;;;;;;;;;;;;;;;
 ;;;;; Metrics
@@ -129,10 +130,14 @@
                         (try
                           (let [wu (wu-api/get-work-unit! state)]
                             (if wu
-                              (threads/submit exec-service (fn []
-                                                             (try
-                                                               (handler-f wu)
-                                                               (catch Exception e (error e "")))))))
+                              (loop []
+                              (try
+                                (threads/submit exec-service (fn []
+                                                               (try
+
+                                                                 (handler-f wu)
+                                                                 (catch Exception e (error e "")))))
+                                (catch RejectedExecutionException rejected (do (Thread/sleep 5000) (recur)))))))
                           (catch InterruptedException ie (do
                                                            (.printStackTrace ie)
                                                            (.interrupt (Thread/currentThread))))
@@ -336,6 +341,12 @@
         {"ts" (:ts wu) "status" (:status wu) "max-offset" (:max-offset wu) "offset" (:offset wu)} )
   work-unit-stats)
 
+(defn ^ExecutorService create-exec-service-fixed [name threads reject-policy]
+  (let [thread-factory (.build (.priority (.namingPattern (BasicThreadFactory$Builder.) (str name "-%d")) Thread/MAX_PRIORITY))
+        queue (BlockingOfferQueue. (int threads))
+        exec  (ThreadPoolExecutor. 2 (if (< threads 2) 2 threads) 10 TimeUnit/MINUTES queue thread-factory reject-policy)]
+    exec))
+
 (defn consume!
   "Starts the consumer consumption process, by initiating redis-fetch-threads(default 1)+consumer-threads threads, one thread is used to wait for work-units
    from redis, and the other threads are used to process the work-unit, the resp data from each work-unit's processing result is
@@ -372,7 +383,7 @@
           publish-exec-service (threads/create-exec-service redis-fetch-threads)
           shutdown-flag (AtomicBoolean. false)
 
-          exec-service (threads/create-exec-service consumer-threads)
+          exec-service (create-exec-service-fixed "consumer-pool" consumer-threads (ThreadPoolExecutor$AbortPolicy.))
           delegate-f (if (get conf :consumer-reporting)
                        (fn [msg]
                          (async/>!! msg-ch msg)
