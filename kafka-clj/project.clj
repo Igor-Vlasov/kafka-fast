@@ -75,6 +75,8 @@
                  [io.netty/netty-buffer "4.1.6.Final"]
                  [io.netty/netty-common "4.1.6.Final"]
 
+                 [org.apache.commons/commons-lang3 "3.4"]
+
                  [com.codahale.metrics/metrics-core "3.0.2"]
 
                  [org.clojure/core.async "0.2.374"
