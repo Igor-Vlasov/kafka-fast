@@ -343,7 +343,7 @@
 (defn ^ExecutorService create-exec-service-fixed [name threads reject-policy]
   (let [thread-factory (.build (.priority (.namingPattern (BasicThreadFactory$Builder.) (str name "-%d")) Thread/MAX_PRIORITY))
         queue (BlockingOfferQueue. (int threads))
-        exec  (ThreadPoolExecutor. 2 (if (< threads 2) 2 threads) 10 TimeUnit/MINUTES queue thread-factory reject-policy)]
+        exec  (ThreadPoolExecutor. threads threads 10 TimeUnit/MINUTES queue thread-factory reject-policy)]
     exec))
 
 (defn consume!
