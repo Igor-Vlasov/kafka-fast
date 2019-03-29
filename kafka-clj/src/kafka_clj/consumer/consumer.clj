@@ -18,7 +18,7 @@
            (kafka_clj.util FetchState Fetch Fetch$Message Fetch$FetchError Util BlockingOfferQueue)
            (clojure.core.async.impl.channels ManyToManyChannel)
            (java.net SocketException)
-           (java.util.concurrent.atomic AtomicBoolean)
+           (java.util.concurrent.atomic AtomicBoolean AtomicLong)
            (com.codahale.metrics MetricRegistry Meter ConsoleReporter)
            (java.util Map)
            (io.netty.buffer ByteBuf Unpooled)
@@ -107,6 +107,8 @@
     (error (.toString ^Fetch$FetchError msg))
     (doto state (.setStatus (if (#{1 3} error-code) :fail-delete :fail)))))
 
+(defonce rejections (AtomicLong.))
+
 ;;;;;;;;;;;;;;;;;;;
 ;;;;;; Private Functions
 
@@ -118,7 +120,8 @@
     {:active-count             (.getActiveCount ^ThreadPoolExecutor exec)
      :core-pool-size           (.getCorePoolSize ^ThreadPoolExecutor exec)
      :pool-size                (.getPoolSize ^ThreadPoolExecutor exec)
-     :queue-remaining-capacity (-> exec .getQueue .remainingCapacity)}
+     :queue-remaining-capacity (-> exec .getQueue .remainingCapacity)
+     :submit-rejections        (.get rejections)}
     {}))
 
 
@@ -130,14 +133,10 @@
                         (try
                           (let [wu (wu-api/get-work-unit! state)]
                             (if wu
-                              (loop []
-                              (try
-                                (threads/submit exec-service (fn []
-                                                               (try
-
-                                                                 (handler-f wu)
-                                                                 (catch Exception e (error e "")))))
-                                (catch RejectedExecutionException rejected (do (Thread/sleep 5000) (recur)))))))
+                              (Util/safeSubmit exec-service (fn []
+                                                              (try
+                                                                (handler-f wu)
+                                                                (catch Exception e (error e "")))) 5000 rejections)))
                           (catch InterruptedException ie (do
                                                            (.printStackTrace ie)
                                                            (.interrupt (Thread/currentThread))))

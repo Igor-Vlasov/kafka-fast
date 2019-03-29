@@ -24,6 +24,10 @@ import java.io.UnsupportedEncodingException;
 import java.net.URI;
 import java.nio.ByteBuffer;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.zip.CRC32;
 import java.util.zip.GZIPInputStream;
 
@@ -294,6 +298,19 @@ public class Util {
         }
 
         return PersistentHashMap.create(result);
+    }
+
+    public static Future<?> safeSubmit(ExecutorService executorService, Runnable task, long retryTimeout, AtomicLong rejectionsCounter) throws InterruptedException {
+        do {
+            try {
+                return executorService.submit(task);
+            }
+            catch(RejectedExecutionException reject)
+            {
+                rejectionsCounter.incrementAndGet();
+            }
+            Thread.sleep(retryTimeout);
+        } while (true);
     }
 
     public static IPersistentMap getPartitionOffsetsByTopic(ListOffsetResponse offsetsResp, String topic, boolean useEarliest, IFn acceptPartitionData) throws Exception {
